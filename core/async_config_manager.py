@@ -41,8 +41,8 @@ class AsyncConfigManager(QObject):
         self.save_timer.setSingleShot(True)
         self.save_timer.timeout.connect(self._do_save)
         
-        # 保存延迟（毫秒）- 50ms，实时保存
-        self.save_delay = 50
+        # 保存延迟（毫秒）- 500ms，避免过于频繁
+        self.save_delay = 500
         
         # 待保存标志
         self._pending_save = False

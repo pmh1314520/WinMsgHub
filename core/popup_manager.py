@@ -50,7 +50,11 @@ class PopupManager:
         # 加载动画配置
         animation_config = popup_config.get('animation_config', {})
         
-        return PopupStyle(
+        # 获取音量值并记录
+        sound_volume_value = popup_config.get('sound_volume', 50)
+        logger.info(f"📖 创建 PopupStyle，sound_volume 参数 = {sound_volume_value}")
+        
+        style = PopupStyle(
             width=popup_config.get('width', 400),
             height=popup_config.get('height', 120),
             opacity=popup_config.get('opacity', 0.98),
@@ -63,6 +67,7 @@ class PopupManager:
             display_duration=popup_config.get('display_duration', 5000),
             position=position,
             sound_file=popup_config.get('sound_file'),
+            sound_volume=sound_volume_value,
             auto_copy=popup_config.get('auto_copy', False),
             copy_mode=popup_config.get('copy_mode', 'on_click'),
             copy_rules=popup_config.get('copy_rules', []),
@@ -99,6 +104,9 @@ class PopupManager:
             # 时间格式
             time_format=popup_config.get('time_format', '%H:%M:%S')
         )
+        
+        logger.info(f"📖 PopupStyle 创建完成，sound_volume = {style.sound_volume}")
+        return style
     
     def show_notification(self, message: Message):
         """
@@ -108,6 +116,11 @@ class PopupManager:
             message: 要显示的消息
         """
         try:
+            # 强制重新加载配置，确保使用最新的配置
+            if hasattr(self.config, 'reload_config'):
+                self.config.reload_config()
+                logger.debug("已重新加载配置")
+            
             # 每次显示前重新加载样式，确保使用最新配置
             self.style = self._load_style()
             

@@ -128,10 +128,10 @@ class HistoryPage(QWidget):
         
         self._setup_ui()
         
-        # 启动时间更新定时器（每秒更新一次时间显示）
+        # 启动时间更新定时器（降低频率，减少CPU占用）
         self.time_update_timer = QTimer()
         self.time_update_timer.timeout.connect(self._update_time_display)
-        self.time_update_timer.start(1000)  # 每1秒更新一次
+        self.time_update_timer.start(5000)  # 每5秒更新一次，减少CPU占用
         
         self._load_messages()
     

@@ -38,15 +38,8 @@ class WebhookConnector(MessageConnector):
             
             class WebhookHandler(BaseHTTPRequestHandler):
                 def do_POST(self):
-                    """只处理POST请求 - 使用防御性编程"""
+                    """只处理POST请求 - 支持嵌套JSON格式"""
                     try:
-                        # 导入错误处理工具
-                        from data.connectors.error_handler import (
-                            safe_json_parse,
-                            validate_message_data,
-                            safe_callback_invoke
-                        )
-                        
                         # 检查Content-Length
                         content_length = int(self.headers.get('Content-Length', 0))
                         if content_length == 0:
@@ -69,31 +62,58 @@ class WebhookConnector(MessageConnector):
                             try:
                                 payload = post_data.decode('gbk')
                             except:
-                                payload = str(post_data)
-                                logger.warning("Webhook数据解码失败")
+                                self.send_error(400, "Invalid encoding")
+                                return
                         
-                        # 安全解析JSON
-                        data = safe_json_parse(payload, default={'content': payload})
+                        # 解析JSON
+                        try:
+                            data = json.loads(payload)
+                        except json.JSONDecodeError as e:
+                            self.send_error(400, f"Invalid JSON: {e}")
+                            return
                         
-                        # 验证和清理消息数据
+                        # 检查是否是嵌套格式（msg字段包含JSON字符串）
+                        if 'msg' in data and isinstance(data['msg'], str):
+                            try:
+                                # 尝试解析msg字段中的JSON字符串
+                                nested_data = json.loads(data['msg'])
+                                data = nested_data
+                                logger.debug("Webhook检测到嵌套格式，已解析")
+                            except json.JSONDecodeError:
+                                # 如果msg字段不是JSON，就把它当作content
+                                if 'title' not in data and 'content' not in data:
+                                    data = {
+                                        'title': '新消息',
+                                        'content': data['msg']
+                                    }
+                        
+                        # 验证必需字段
+                        if 'title' not in data or 'content' not in data:
+                            self.send_error(400, "Missing required fields: title or content")
+                            return
+                        
+                        # 获取source（可选字段）
                         source_name = config.get('name', 'Webhook')
-                        cleaned_data = validate_message_data(data, source_name)
-                        
-                        # 创建消息对象
-                        # 如果解析出来的数据中有自定义source，优先使用它（支持3参数格式）
                         final_source = data.get('source', source_name)
                         
+                        # 创建消息对象
                         message = Message(
-                            id=cleaned_data.get('id') or str(uuid.uuid4()),
-                            source=final_source,  # 优先使用解析出来的source
-                            title=cleaned_data.get('title', 'Webhook'),
-                            content=cleaned_data.get('content', ''),
-                            timestamp=cleaned_data.get('timestamp') or time.time(),
-                            metadata=cleaned_data.get('metadata', {})
+                            id=data.get('id', str(uuid.uuid4())),
+                            source=final_source,
+                            title=str(data['title']),
+                            content=str(data['content']),
+                            timestamp=data.get('timestamp', time.time()),
+                            metadata=data.get('metadata', {})
                         )
                         
-                        # 安全调用回调
-                        safe_callback_invoke(connector._callback, message, f"Webhook-{source_name}")
+                        logger.info(f"Webhook消息已解析: title={message.title}, source={message.source}")
+                        
+                        # 调用回调
+                        if connector._callback:
+                            try:
+                                connector._callback(message)
+                            except Exception as e:
+                                logger.error(f"Webhook回调失败: {e}", exc_info=True)
                         
                         # 返回成功响应
                         self.send_response(200)
@@ -106,7 +126,7 @@ class WebhookConnector(MessageConnector):
                         try:
                             self.send_error(500, str(e))
                         except:
-                            pass  # 如果发送错误响应也失败，就忽略
+                            pass
                 
                 def log_message(self, format, *args):
                     """重定向日志到logger"""

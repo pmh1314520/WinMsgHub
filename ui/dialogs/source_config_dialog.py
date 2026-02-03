@@ -3,6 +3,7 @@
 """
 from PyQt6.QtWidgets import *
 from PyQt6.QtCore import *
+from PyQt6.QtGui import QCursor
 import json
 
 
@@ -93,16 +94,8 @@ class SourceConfigDialog(QDialog):
             self.fields['use_tls'].setChecked(False)  # 本地MQTT不需要TLS
             layout.addRow("", self.fields['use_tls'])
             
-            # 添加格式说明
-            self._add_format_hint(layout, "MQTT", 
-                "支持多种格式：\n"
-                "1. 空格分隔：标题 内容 [来源名称]\n"
-                "   示例：测试标题 测试内容\n"
-                "   示例：测试标题 测试内容 手机通知\n"
-                '2. JSON格式：{"title": "标题", "content": "内容", "source": "来源名称"}\n'
-                "   注：source字段可选\n"
-                "3. 纯文本：内容（自动生成标题）\n"
-                "注：第3个参数（来源名称）可选，用于自定义弹窗左上角显示")
+            # 添加JSON模板
+            self._add_json_template(layout, "MQTT")
 
         
         elif self.source_type == "websocket":
@@ -119,16 +112,8 @@ class SourceConfigDialog(QDialog):
             self.fields['reconnect'].setChecked(True)
             layout.addRow("", self.fields['reconnect'])
             
-            # 添加格式说明
-            self._add_format_hint(layout, "WebSocket", 
-                "支持多种格式：\n"
-                "1. 空格分隔：标题 内容 [来源名称]\n"
-                "   示例：测试标题 测试内容\n"
-                "   示例：测试标题 测试内容 手机通知\n"
-                '2. JSON格式：{"title": "标题", "content": "内容", "source": "来源名称"}\n'
-                "   注：source字段可选\n"
-                "3. 纯文本：内容（自动生成标题）\n"
-                "注：第3个参数（来源名称）可选，用于自定义弹窗左上角显示")
+            # 添加JSON模板
+            self._add_json_template(layout, "WebSocket")
         
         elif self.source_type == "rss":
             self.fields['url'] = QLineEdit()
@@ -218,17 +203,8 @@ class SourceConfigDialog(QDialog):
             self.fields['path'].setText("/webhook")
             layout.addRow("路径:", self.fields['path'])
             
-            # 添加格式说明
-            self._add_format_hint(layout, "Webhook", 
-                "POST 到 http://你的IP:端口/路径\n"
-                "支持多种格式：\n"
-                "1. 空格分隔：标题 内容 [来源名称]\n"
-                "   示例：测试标题 测试内容\n"
-                "   示例：测试标题 测试内容 手机通知\n"
-                '2. JSON格式：{"title": "标题", "content": "内容", "source": "来源名称"}\n'
-                "   注：source字段可选\n"
-                "3. 纯文本：内容（自动生成标题）\n"
-                "注：第3个参数（来源名称）可选，用于自定义弹窗左上角显示")
+            # 添加JSON模板
+            self._add_json_template(layout, "Webhook")
         
         elif self.source_type == "api":
             self.fields['url'] = QLineEdit()
@@ -244,17 +220,8 @@ class SourceConfigDialog(QDialog):
             self.fields['poll_interval'].setValue(60)
             layout.addRow("轮询间隔(秒):", self.fields['poll_interval'])
             
-            # 添加格式说明
-            self._add_format_hint(layout, "API", 
-                "API 返回格式：\n"
-                "1. 空格分隔：标题 内容 [来源名称]\n"
-                "   示例：测试标题 测试内容\n"
-                "   示例：测试标题 测试内容 手机通知\n"
-                '2. JSON格式：{"title": "标题", "content": "内容", "source": "来源名称"}\n'
-                "   注：source字段可选\n"
-                '3. JSON数组：{"messages": [...]}\n'
-                "4. 纯文本：内容（自动生成标题）\n"
-                "注：第3个参数（来源名称）可选，用于自定义弹窗左上角显示")
+            # 添加JSON模板
+            self._add_json_template(layout, "API")
         
         elif self.source_type == "imap":
             self.fields['server'] = QLineEdit()
@@ -287,38 +254,150 @@ class SourceConfigDialog(QDialog):
                 "自动解析邮件内容\n"
                 "无需特殊格式，自动提取主题和正文")
     
-    def _add_format_hint(self, layout, source_name, hint_text):
-        """添加格式提示"""
-        from ui.svg_icons import SvgIcon
+    def _add_json_template(self, layout, source_type):
+        """添加JSON模板和一键复制功能"""
+        # 标题
+        title_layout = QHBoxLayout()
+        title_label = QLabel(f"📋 {source_type} 消息格式（仅支持JSON）")
+        title_label.setStyleSheet("color: #4A9EFF; font-weight: bold; margin-top: 15px; font-size: 12px;")
+        title_layout.addWidget(title_label)
+        title_layout.addStretch()
         
-        hint_layout = QHBoxLayout()
-        hint_icon = QLabel()
-        hint_icon.setPixmap(SvgIcon.get_pixmap("clipboard", "#4A9EFF", 14))
-        hint_layout.addWidget(hint_icon)
+        title_widget = QWidget()
+        title_widget.setLayout(title_layout)
+        layout.addRow("", title_widget)
         
-        hint_label = QLabel(f"{source_name} 消息格式：")
-        hint_label.setStyleSheet("color: #4A9EFF; font-weight: bold; margin-top: 10px;")
-        hint_layout.addWidget(hint_label)
-        hint_layout.addStretch()
+        # JSON模板
+        if source_type == "API":
+            json_template = '''{
+  "messages": [
+    {
+      "title": "消息标题",
+      "content": "消息内容",
+      "source": "来源名称"
+    }
+  ]
+}
+
+或单条消息：
+{
+  "title": "消息标题",
+  "content": "消息内容",
+  "source": "来源名称"
+}'''
+        else:
+            json_template = '''{
+  "title": "消息标题",
+  "content": "消息内容",
+  "source": "来源名称"
+}'''
         
-        hint_widget = QWidget()
-        hint_widget.setLayout(hint_layout)
-        layout.addRow("", hint_widget)
-        
-        hint_content = QLabel(hint_text)
-        hint_content.setStyleSheet("""
-            QLabel {
-                background-color: #2A3139;
-                color: #B8BFC6;
+        # 模板显示区域
+        template_text = QTextEdit()
+        template_text.setPlainText(json_template)
+        template_text.setReadOnly(True)
+        template_text.setMaximumHeight(150)
+        template_text.setStyleSheet("""
+            QTextEdit {
+                background-color: #1E2329;
+                color: #E5C07B;
                 padding: 10px;
                 border-radius: 5px;
-                border-left: 3px solid #4A9EFF;
+                border: 1px solid #3A4149;
                 font-family: 'Consolas', 'Monaco', monospace;
                 font-size: 11px;
+                line-height: 1.5;
             }
         """)
-        hint_content.setWordWrap(True)
-        layout.addRow("", hint_content)
+        layout.addRow("", template_text)
+        
+        # 说明文字
+        hint_text = QLabel("注：source 字段可选，用于自定义弹窗左上角显示的来源名称")
+        hint_text.setStyleSheet("""
+            QLabel {
+                color: #B8BFC6;
+                font-size: 10px;
+                padding: 5px 10px;
+                background-color: #2A3139;
+                border-radius: 3px;
+                border-left: 3px solid #E5C07B;
+            }
+        """)
+        hint_text.setWordWrap(True)
+        layout.addRow("", hint_text)
+        
+        # 复制按钮
+        copy_btn = QPushButton("📋 一键复制JSON模板")
+        copy_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4A9EFF;
+                color: white;
+                border: none;
+                padding: 8px 15px;
+                border-radius: 5px;
+                font-weight: bold;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #5AAFFF;
+            }
+            QPushButton:pressed {
+                background-color: #3A8FEF;
+            }
+        """)
+        copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        copy_btn.clicked.connect(lambda: self._copy_to_clipboard(json_template, copy_btn))
+        layout.addRow("", copy_btn)
+    
+    def _copy_to_clipboard(self, text, button):
+        """复制文本到剪贴板并显示反馈"""
+        try:
+            from PyQt6.QtWidgets import QApplication
+            clipboard = QApplication.clipboard()
+            clipboard.setText(text)
+            
+            # 临时改变按钮文字显示反馈
+            original_text = button.text()
+            button.setText("✓ 已复制到剪贴板")
+            button.setStyleSheet("""
+                QPushButton {
+                    background-color: #98C379;
+                    color: white;
+                    border: none;
+                    padding: 8px 15px;
+                    border-radius: 5px;
+                    font-weight: bold;
+                    font-size: 11px;
+                }
+            """)
+            
+            # 1秒后恢复
+            QTimer.singleShot(1000, lambda: self._restore_button(button, original_text))
+            
+        except Exception as e:
+            button.setText("✗ 复制失败")
+            QTimer.singleShot(1000, lambda: self._restore_button(button, "📋 一键复制JSON模板"))
+    
+    def _restore_button(self, button, original_text):
+        """恢复按钮原始状态"""
+        button.setText(original_text)
+        button.setStyleSheet("""
+            QPushButton {
+                background-color: #4A9EFF;
+                color: white;
+                border: none;
+                padding: 8px 15px;
+                border-radius: 5px;
+                font-weight: bold;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #5AAFFF;
+            }
+            QPushButton:pressed {
+                background-color: #3A8FEF;
+            }
+        """)
     
     def _browse_folder(self):
         """浏览文件夹"""

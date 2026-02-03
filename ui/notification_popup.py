@@ -12,9 +12,10 @@ from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QPoint, QEasingCurve, p
 from PyQt6.QtGui import QScreen, QFont, QColor
 from data.models import Message
 from utils.logger import get_logger
+import logging
 
 
-logger = get_logger(__name__)
+logger = logging.getLogger('WinMsgHub')
 
 
 # 全局弹窗管理器
@@ -344,6 +345,7 @@ class PopupStyle:
     display_duration: int = 5000
     position: PopupPosition = PopupPosition.TOP_RIGHT
     sound_file: Optional[str] = None
+    sound_volume: int = 50  # 音量 (0-100)
     auto_copy: bool = False
     copy_mode: str = "on_click"  # on_click 或 auto
     copy_rules: list = None  # 复制规则列表
@@ -715,8 +717,10 @@ class NotificationPopup(QWidget):
         try:
             from ui.sound_manager import SoundManager
             sound_manager = SoundManager.get_instance()
+            # 设置音量（0-100转换为0.0-1.0）
+            volume = self.style.sound_volume / 100.0
+            sound_manager.set_volume(volume)
             sound_manager.play(sound_file)
-            logger.debug(f"播放音效: {sound_file}")
         except Exception as e:
             logger.error(f"播放音效失败: {e}")
     

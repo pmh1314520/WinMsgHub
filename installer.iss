@@ -3,7 +3,7 @@
 ; 下载 Inno Setup: https://jrsoftware.org/isdl.php
 
 #define MyAppName "WinMsgHub"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "青云制作_彭明航"
 #define MyAppURL "https://github.com/pmh1314520/WinMsgHub"
 #define MyAppExeName "WinMsgHub.exe"

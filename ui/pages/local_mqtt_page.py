@@ -141,9 +141,7 @@ class LocalMQTTPage(QWidget):
         # 提示内容
         tip_text = QLabel(
             "若使用本地MQTT服务，<b>强烈建议</b>您将电脑的内网IP配置为<b>静态IP</b>。\n"
-            "否则每次路由器重启或DHCP租约到期后，内网IP地址可能会变化，导致其它设备端连接失败。\n\n"
-            "<b style='color: #E06C75;'>小提示：</b>使用本地MQTT服务时，若出现其它设备无法连接上本地MQTT服务的情况，\n"
-            "可尝试<b style='color: #E06C75;'>关闭VPN/代理（梯子）</b>"
+            "否则每次路由器重启或DHCP租约到期后，内网IP地址可能会变化，导致其它设备端连接失败。"
         )
         tip_text.setWordWrap(True)
         tip_text.setStyleSheet("""
@@ -488,6 +486,36 @@ class LocalMQTTPage(QWidget):
 <p style="color: #E5C07B;">启动服务后，本地MQTT服务将自动运行在后台并开放1883端口等待消息</p>
 <p style="color: #E5C07B;"><b>强烈建议您将电脑IP设置为静态IP</b>，避免IP变化导致手机端连接失败。</p>
 
+<h3 style="color: #E06C75; margin-top: 20px;">⚠️ 广域网MQTT消息传输（重要警告）</h3>
+<div style="background-color: rgba(224, 108, 117, 0.15); border-left: 4px solid #E06C75; padding: 15px; border-radius: 4px; margin: 10px 0;">
+<p style="color: #E06C75; font-weight: bold; margin-top: 0;">如果您需要实现广域网（跨网络）的MQTT消息传输：</p>
+<p style="color: #B8BFC6;">
+您可以将<b>手机端（SmsForwarder）</b>和<b>WinMsgHub消息源配置</b>中的Broker地址都改为：<br>
+<span style="color: #98C379; font-weight: bold; font-size: 14px;">broker.emqx.io</span><br>
+端口保持：<span style="color: #98C379; font-weight: bold;">1883</span>
+</p>
+
+<p style="color: #E06C75; font-weight: bold; font-size: 14px; margin-top: 15px;">⚠️ 隐私风险警告：</p>
+<ul style="color: #E06C75; margin: 5px 0; padding-left: 20px;">
+<li><b>broker.emqx.io 是一个公共的MQTT消息转发服务！</b></li>
+<li><b>任何人都可以连接并订阅您的主题，存在隐私泄露风险！</b></li>
+<li><b>请勿通过公共Broker传输敏感信息、隐私数据、密码等重要内容！</b></li>
+<li><b>对于重要的隐私消息，务必使用本地MQTT局域网通信！</b></li>
+</ul>
+
+<p style="color: #E5C07B; font-weight: bold; margin-top: 15px;">📢 免责声明：</p>
+<p style="color: #B8BFC6;">
+使用公共MQTT服务（如 broker.emqx.io）导致的任何隐私泄露、数据丢失、安全风险等问题，<b style="color: #E06C75;">均与本软件开发者无关</b>，用户需自行承担所有风险和责任。
+</p>
+
+<p style="color: #98C379; font-weight: bold; margin-top: 15px;">✅ 推荐做法：</p>
+<ul style="color: #B8BFC6; margin: 5px 0; padding-left: 20px;">
+<li>日常使用：优先使用<b>本地MQTT服务</b>（局域网通信，安全可靠）</li>
+<li>临时需求：仅在必要时使用公共Broker，且避免传输敏感信息</li>
+<li>自建服务：有条件的用户可自建MQTT服务器并配置公网访问</li>
+</ul>
+</div>
+
 <h3 style="color: #61AFEF;">Android手机配置（SmsForwarder）</h3>
 <ol style="color: #B8BFC6;">
 <li>下载并安装 <b>SmsForwarder</b>：
@@ -541,7 +569,7 @@ class LocalMQTTPage(QWidget):
 <h3 style="color: #61AFEF;">常见问题</h3>
 <p style="color: #B8BFC6;">
 <b>Q: 为什么手机连接不上？</b><br>
-A: 请确保手机和电脑在同一个WiFi网络下，电脑最好不要处于翻墙状态。
+A: 请确保手机和电脑在同一个WiFi网络下。
 </p>
 <p style="color: #B8BFC6;">
 <b>Q: 服务启动失败怎么办？</b><br>
@@ -779,10 +807,36 @@ localMQTTServer\\README_启动失败解决方法.txt
         """重启服务"""
         from PyQt6.QtWidgets import QMessageBox
         
-        if self.mqtt_manager.restart_service():
-            QMessageBox.information(self, "成功", "本地MQTT服务已重启！")
-        else:
-            QMessageBox.critical(self, "错误", "重启本地MQTT服务失败，请查看日志。")
+        # 异步重启服务，避免阻塞UI
+        def restart_task():
+            """后台重启任务"""
+            try:
+                return self.mqtt_manager.restart_service()
+            except Exception as e:
+                logger.error(f"重启MQTT服务失败: {e}")
+                return False, f"异常: {str(e)}"
+        
+        def on_restarted(result):
+            """重启完成回调"""
+            success, message = result
+            
+            if success:
+                QMessageBox.information(self, "成功", f"本地MQTT服务已重启！\n\n{message}")
+                # 立即更新状态
+                self._update_status_async()
+            else:
+                QMessageBox.critical(self, "错误", f"重启本地MQTT服务失败！\n\n错误: {message}")
+        
+        # 异步执行重启
+        if not hasattr(self, '_restart_task_manager'):
+            from utils.async_worker import AsyncTaskManager
+            self._restart_task_manager = AsyncTaskManager()
+        
+        self._restart_task_manager.run_task(
+            "restart_mqtt_service",
+            restart_task,
+            on_finished=on_restarted
+        )
     
     def _on_auto_start_changed(self, state):
         """自动启动状态改变"""

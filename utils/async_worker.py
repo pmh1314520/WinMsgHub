@@ -59,6 +59,7 @@ class AsyncTaskManager(QObject):
     def __init__(self):
         super().__init__()
         self.workers = {}  # 任务ID -> Worker
+        self._is_cleaning_up = False  # 清理标志
     
     def run_task(self, task_id: str, func: Callable, 
                  on_finished: Callable = None,
@@ -74,12 +75,18 @@ class AsyncTaskManager(QObject):
             *args: 函数参数
             **kwargs: 函数关键字参数
         """
+        # 如果正在清理，不启动新任务
+        if self._is_cleaning_up:
+            return
+        
         # 如果同ID任务正在运行，先取消
         if task_id in self.workers:
             old_worker = self.workers[task_id]
             if old_worker.isRunning():
                 old_worker.cancel()
-                old_worker.wait()
+                old_worker.wait(500)  # 最多等待0.5秒
+                if old_worker.isRunning():
+                    old_worker.terminate()  # 强制终止
         
         # 创建新任务
         worker = AsyncWorker(func, *args, **kwargs)
@@ -92,7 +99,11 @@ class AsyncTaskManager(QObject):
         
         # 任务完成后清理
         def cleanup():
-            if task_id in self.workers:
+            if task_id in self.workers and not self._is_cleaning_up:
+                worker = self.workers[task_id]
+                # 确保线程已完全停止
+                if worker.isRunning():
+                    worker.wait(100)
                 del self.workers[task_id]
         
         worker.finished.connect(cleanup)
@@ -107,24 +118,32 @@ class AsyncTaskManager(QObject):
         if task_id in self.workers:
             worker = self.workers[task_id]
             worker.cancel()
-            worker.wait()
+            worker.wait(500)
+            if worker.isRunning():
+                worker.terminate()
             del self.workers[task_id]
     
     def cancel_all(self):
         """取消所有任务"""
-        for worker in list(self.workers.values()):
+        self._is_cleaning_up = True
+        for task_id, worker in list(self.workers.items()):
             worker.cancel()
-            worker.wait()
+            worker.wait(500)
+            if worker.isRunning():
+                worker.terminate()
         self.workers.clear()
+        self._is_cleaning_up = False
     
     def cleanup(self):
         """清理所有任务（程序退出时调用）"""
-        for worker in list(self.workers.values()):
+        self._is_cleaning_up = True
+        for task_id, worker in list(self.workers.items()):
             if worker.isRunning():
                 worker.cancel()
                 # 给线程一点时间退出
-                worker.wait(1000)  # 最多等待1秒
+                worker.wait(500)  # 最多等待0.5秒
                 if worker.isRunning():
                     # 如果还在运行，强制终止
                     worker.terminate()
+                    worker.wait(100)  # 等待终止完成
         self.workers.clear()

@@ -165,19 +165,36 @@ class LocalMQTTManager:
             # 设置停止标志
             self._is_running = False
             
-            # 等待线程结束（最多5秒）
+            # 如果broker存在且loop存在，尝试优雅关闭
+            if self.broker and self.loop:
+                try:
+                    # 在broker的事件循环中调度关闭任务
+                    future = asyncio.run_coroutine_threadsafe(
+                        self.broker.shutdown(),
+                        self.loop
+                    )
+                    # 等待关闭完成（最多3秒）
+                    future.result(timeout=3)
+                    logger.info("Broker已优雅关闭")
+                except Exception as e:
+                    logger.warning(f"Broker关闭时出现异常: {e}")
+            
+            # 等待线程结束（最多8秒）
             if self.broker_thread and self.broker_thread.is_alive():
-                self.broker_thread.join(timeout=5)
+                logger.info("等待MQTT服务线程结束...")
+                self.broker_thread.join(timeout=8)
                 
                 if self.broker_thread.is_alive():
-                    logger.warning("MQTT服务线程未能正常结束")
+                    logger.warning("MQTT服务线程未能在8秒内结束")
                     return False, "服务停止超时"
+                else:
+                    logger.info("MQTT服务线程已结束")
             
             self.broker = None
             self.broker_thread = None
             self.loop = None
             
-            logger.info("MQTT服务已停止")
+            logger.info("MQTT服务已完全停止")
             
             # 保存停止状态到配置（用户手动停止）
             self.config_manager.set("local_mqtt.auto_start", False)
@@ -187,6 +204,43 @@ class LocalMQTTManager:
         except Exception as e:
             logger.error(f"停止MQTT服务失败: {e}", exc_info=True)
             return False, f"停止失败: {str(e)}"
+    
+    def restart_service(self) -> tuple:
+        """重启MQTT服务
+        
+        Returns:
+            tuple: (成功标志, 消息)
+        """
+        try:
+            logger.info("正在重启MQTT服务...")
+            
+            # 保存当前端口配置
+            port = self._port
+            ws_port = self._ws_port
+            
+            # 停止服务
+            logger.info("第1步：停止现有服务...")
+            success, message = self.stop_service()
+            if not success:
+                return False, f"停止服务失败: {message}"
+            
+            # 等待足够长的时间确保端口完全释放
+            logger.info("第2步：等待端口释放...")
+            import time
+            time.sleep(2)  # 增加到2秒
+            
+            # 启动服务
+            logger.info("第3步：启动新服务...")
+            success, message = self.start_service(port, ws_port)
+            if not success:
+                return False, f"启动服务失败: {message}"
+            
+            logger.info("MQTT服务重启成功")
+            return True, "服务重启成功"
+            
+        except Exception as e:
+            logger.error(f"重启MQTT服务失败: {e}", exc_info=True)
+            return False, f"重启失败: {str(e)}"
     
     def is_running(self) -> bool:
         """检查服务是否运行

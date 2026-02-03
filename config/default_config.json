@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "message_sources": {
     "mqtt": {
       "enabled": true,
@@ -43,7 +43,8 @@
     "animation_duration": 300,
     "display_duration": 5000,
     "position": "top_right",
-    "sound_file": null,
+    "sound_file": "resources/sounds/default.mp3",
+    "sound_volume": 50,
     "auto_copy": false,
     "copy_rules": [],
     "max_popups": 5

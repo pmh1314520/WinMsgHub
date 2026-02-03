@@ -149,24 +149,80 @@ class APIConnector(MessageConnector):
                 logger.error(f"轮询端点 {endpoint} 失败: {str(e)}")
     
     def _parse_response(self, data: dict, endpoint: str) -> List[Message]:
-        """解析API响应"""
+        """解析API响应 - 支持嵌套JSON格式"""
         messages = []
         
-        # 假设响应格式为 {"messages": [...]}
-        if isinstance(data, dict) and 'messages' in data:
-            for item in data['messages']:
-                # 支持自定义source（第3参数）
-                source_name = self._config.get('name', 'API')
-                final_source = item.get('source', source_name)
+        try:
+            # 支持三种格式：
+            # 1. 单个消息：{"title": "标题", "content": "内容", "source": "来源"}
+            # 2. 消息数组：{"messages": [{...}, {...}]}
+            # 3. 嵌套格式：{"msg": "{\"title\": \"标题\", ...}"}
+            
+            source_name = self._config.get('name', 'API')
+            
+            if isinstance(data, dict):
+                # 检查是否是嵌套格式
+                if 'msg' in data and isinstance(data['msg'], str):
+                    try:
+                        nested_data = json.loads(data['msg'])
+                        data = nested_data
+                        logger.debug("API检测到嵌套格式，已解析")
+                    except json.JSONDecodeError:
+                        if 'title' not in data and 'content' not in data:
+                            data = {
+                                'title': '新消息',
+                                'content': data['msg']
+                            }
                 
-                message = Message(
-                    id=item.get('id', str(uuid.uuid4())),
-                    source=final_source,  # 优先使用解析出来的source
-                    title=item.get('title', '新消息'),
-                    content=item.get('content', ''),
-                    timestamp=item.get('timestamp', time.time()),
-                    metadata={'endpoint': endpoint, **item.get('metadata', {})}
-                )
-                messages.append(message)
+                if 'messages' in data and isinstance(data['messages'], list):
+                    # 格式2：消息数组
+                    for item in data['messages']:
+                        if not isinstance(item, dict):
+                            continue
+                        
+                        # 检查嵌套格式
+                        if 'msg' in item and isinstance(item['msg'], str):
+                            try:
+                                nested_item = json.loads(item['msg'])
+                                item = nested_item
+                            except json.JSONDecodeError:
+                                pass
+                        
+                        # 验证必需字段
+                        if 'title' not in item or 'content' not in item:
+                            logger.warning("API消息缺少必需字段，跳过")
+                            continue
+                        
+                        final_source = item.get('source', source_name)
+                        message = Message(
+                            id=item.get('id', str(uuid.uuid4())),
+                            source=final_source,
+                            title=str(item['title']),
+                            content=str(item['content']),
+                            timestamp=item.get('timestamp', time.time()),
+                            metadata={'endpoint': endpoint, **item.get('metadata', {})}
+                        )
+                        messages.append(message)
+                        
+                elif 'title' in data and 'content' in data:
+                    # 格式1：单个消息
+                    final_source = data.get('source', source_name)
+                    message = Message(
+                        id=data.get('id', str(uuid.uuid4())),
+                        source=final_source,
+                        title=str(data['title']),
+                        content=str(data['content']),
+                        timestamp=data.get('timestamp', time.time()),
+                        metadata={'endpoint': endpoint}
+                    )
+                    messages.append(message)
+                else:
+                    logger.error("API响应格式不正确，缺少必需字段")
+            
+            if messages:
+                logger.info(f"API解析了 {len(messages)} 条消息")
+            
+        except Exception as e:
+            logger.error(f"解析API响应失败: {e}", exc_info=True)
         
         return messages

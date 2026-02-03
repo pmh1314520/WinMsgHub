@@ -1195,6 +1195,29 @@ class PopupPage(QWidget):
         sound_layout.addStretch()
         grid.addLayout(sound_layout, 5, 1)
         
+        # 音量控制
+        grid.addWidget(QLabel("音效音量:"), 6, 0)
+        volume_layout = QHBoxLayout()
+        
+        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.volume_slider.setRange(0, 100)
+        # 阻塞信号，避免触发自动保存
+        self.volume_slider.blockSignals(True)
+        self.volume_slider.setValue(50)
+        self.volume_slider.blockSignals(False)
+        self.volume_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.volume_slider.setTickInterval(10)
+        self.volume_slider.valueChanged.connect(self._on_volume_changed)
+        volume_layout.addWidget(self.volume_slider)
+        
+        self.volume_label = QLabel("50%")
+        self.volume_label.setStyleSheet("color: #ABB2BF; font-size: 12px; min-width: 40px;")
+        self.volume_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        volume_layout.addWidget(self.volume_label)
+        
+        volume_layout.addStretch()
+        grid.addLayout(volume_layout, 6, 1)
+        
         layout.addLayout(grid)
         
         # 动画配置区域（动态显示）
@@ -1283,6 +1306,11 @@ class PopupPage(QWidget):
         self.sound_label.setText("未选择")
         self._trigger_auto_save()
     
+    def _on_volume_changed(self, value):
+        """音量滑块值改变"""
+        self.volume_label.setText(f"{value}%")
+        self._trigger_auto_save()
+    
     def _test_sound(self):
         """试听音效"""
         if not self.selected_sound:
@@ -1292,6 +1320,9 @@ class PopupPage(QWidget):
         try:
             from ui.sound_manager import SoundManager
             sound_manager = SoundManager.get_instance()
+            # 设置音量（0.0 - 1.0）
+            volume = self.volume_slider.value() / 100.0
+            sound_manager.set_volume(volume)
             sound_manager.play(self.selected_sound)
         except Exception as e:
             QMessageBox.warning(self, "播放失败", f"无法播放音效: {e}")
@@ -1674,6 +1705,9 @@ class PopupPage(QWidget):
     def _load_config(self):
         """加载配置"""
         try:
+            # 设置标志，阻止加载配置时触发自动保存
+            self._loading_config = True
+            
             popup_config = self.config_manager.get("popup", {})
             
             # 尺寸
@@ -1763,40 +1797,44 @@ class PopupPage(QWidget):
             # 音效
             from utils.resource_path import get_resource_path
             import os
-            default_sound = get_resource_path("resources/sounds/default.mp3")
             
-            # 检查配置中是否存在sound_file键
-            if "sound_file" not in popup_config:
-                # 首次使用，没有配置过音效，使用默认音效
+            configured_sound = popup_config.get("sound_file")
+            
+            # 如果配置为空或None，使用默认音效
+            if not configured_sound:
+                default_sound = get_resource_path("resources/sounds/default.mp3")
                 if os.path.exists(default_sound):
                     self.selected_sound = default_sound
                 else:
                     self.selected_sound = None
             else:
-                # 已经配置过音效
-                configured_sound = popup_config.get("sound_file")
+                # 处理相对路径（从配置文件读取的路径）
+                if not os.path.isabs(configured_sound):
+                    configured_sound = get_resource_path(configured_sound)
                 
-                if configured_sound is None:
-                    # 用户明确清空了音效
-                    self.selected_sound = None
-                elif configured_sound == "":
-                    # 空字符串也视为清空
-                    self.selected_sound = None
+                # 检查文件是否存在
+                if os.path.exists(configured_sound):
+                    self.selected_sound = configured_sound
                 else:
-                    # 检查配置的音效文件是否存在
-                    if os.path.exists(configured_sound):
-                        self.selected_sound = configured_sound
+                    # 文件不存在，尝试使用默认音效
+                    default_sound = get_resource_path("resources/sounds/default.mp3")
+                    if os.path.exists(default_sound):
+                        self.selected_sound = default_sound
                     else:
-                        # 配置的文件不存在，尝试使用默认音效
-                        if os.path.exists(default_sound):
-                            self.selected_sound = default_sound
-                        else:
-                            self.selected_sound = None
+                        self.selected_sound = None
             
             if self.selected_sound:
                 self.sound_label.setText(os.path.basename(self.selected_sound))
             else:
                 self.sound_label.setText("未选择")
+            
+            # 加载音量配置
+            sound_volume = popup_config.get("sound_volume", 50)
+            # 阻塞信号，避免触发自动保存
+            self.volume_slider.blockSignals(True)
+            self.volume_slider.setValue(sound_volume)
+            self.volume_slider.blockSignals(False)
+            self.volume_label.setText(f"{sound_volume}%")
             
             # 加载字体配置
             self.title_font_size.setValue(popup_config.get("title_font_size", 13))
@@ -1870,6 +1908,9 @@ class PopupPage(QWidget):
             
         except Exception as e:
             QMessageBox.warning(self, "警告", f"加载配置失败: {e}")
+        finally:
+            # 清除标志，恢复自动保存
+            self._loading_config = False
     
     def _connect_signals(self):
         """连接所有控件的信号"""
@@ -1960,7 +2001,7 @@ class PopupPage(QWidget):
     def _trigger_preview_update(self):
         """触发预览更新（防抖）"""
         self.preview_timer.stop()
-        self.preview_timer.start(100)  # 100ms后更新预览
+        self.preview_timer.start(300)  # 300ms后更新预览，避免过于频繁
     
     def _update_preview(self):
         """更新预览"""
@@ -2060,14 +2101,18 @@ class PopupPage(QWidget):
     
     def _trigger_auto_save(self):
         """触发自动保存（使用定时器防抖）"""
+        # 如果正在加载配置，不触发保存
+        if hasattr(self, '_loading_config') and self._loading_config:
+            return
+        
         if not hasattr(self, 'save_timer'):
             self.save_timer = QTimer()
             self.save_timer.setSingleShot(True)
             self.save_timer.timeout.connect(self._auto_save_config)
         
-        # 缩短防抖时间到100ms，确保配置能及时保存
+        # 防抖延迟500ms，避免频繁保存
         self.save_timer.stop()
-        self.save_timer.start(100)  # 从500ms改为100ms
+        self.save_timer.start(500)  # 从100ms改为500ms
     
     def _auto_save_config(self):
         """自动保存配置（异步）"""
@@ -2077,6 +2122,10 @@ class PopupPage(QWidget):
             
             logger.info("[弹窗设置] 配置已修改，准备自动保存...")
             print("[弹窗设置] 配置已修改，准备自动保存...")
+            
+            # 添加调试：显示当前音量值
+            current_volume = self.volume_slider.value()
+            logger.info(f"[弹窗设置] 当前音量滑块值: {current_volume}%")
             
             # 获取选中的位置
             selected_position = None
@@ -2128,6 +2177,7 @@ class PopupPage(QWidget):
             self.async_config.set("popup.border_radius", self.border_radius_spin.value())
             self.async_config.set("popup.animation_type", animation_type)
             self.async_config.set("popup.sound_file", self.selected_sound)
+            self.async_config.set("popup.sound_volume", self.volume_slider.value())
             
             # 保存动画配置
             animation_config = {}
@@ -2453,6 +2503,12 @@ class PopupPage(QWidget):
                 self.selected_sound = None
                 self.sound_label.setText("未选择")
             
+            # 恢复默认音量
+            self.volume_slider.setValue(50)
+            self.volume_label.setText("50%")
+            # 手动触发保存，确保音量被保存
+            self._trigger_auto_save()
+            
             # 动画配置
             self.slide_direction_combo.setCurrentIndex(0)  # 从右向左
             self.fade_start_opacity.setValue(0)  # 0%
@@ -2495,7 +2551,9 @@ class PopupPage(QWidget):
             self.preview_title_input.setText("这是弹窗标题")
             self.preview_content_input.setPlainText("这是弹窗的内容预览文本，您可以实时看到配置的效果。")
             
-            self._on_config_changed()
+            # 强制立即保存配置
+            self.force_save()
+            
             QMessageBox.information(self, "成功", "所有设置已恢复默认")
     
     def _show_real_preview(self):
@@ -2599,6 +2657,7 @@ class PopupPage(QWidget):
                 auto_copy=self.auto_copy_check.isChecked(),
                 copy_mode="auto" if self.copy_auto_radio.isChecked() else "on_click",
                 sound_file=self.selected_sound,
+                sound_volume=self.volume_slider.value(),  # 添加音量参数
                 # 字体配置
                 title_font_size=self.title_font_size.value(),
                 title_color=self.title_color,
@@ -2895,6 +2954,10 @@ class PopupPage(QWidget):
         else:
             self.selected_sound = None
             self.sound_label.setText("未选择")
+        
+        # 恢复默认音量
+        self.volume_slider.setValue(50)
+        self.volume_label.setText("50%")
         
         # 动画配置
         self.slide_direction_combo.setCurrentIndex(0)  # 从右向左

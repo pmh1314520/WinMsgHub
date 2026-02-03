@@ -66,6 +66,48 @@
 
 ---
 
+## 🖼️ 界面预览
+
+![](resources/images/展示图1.png)
+
+------
+
+![](resources/images/展示图2.png)
+
+------
+
+![](resources/images/展示图3.png)
+
+------
+
+![](resources/images/展示图4.png)
+
+------
+
+![](resources/images/展示图5.png)
+
+------
+
+![](resources/images/展示图6.png)
+
+------
+
+![](resources/images/展示图7.png)
+
+------
+
+![](resources/images/展示图8.png)
+
+------
+
+![](resources/images/展示图9.png)
+
+------
+
+![](resources/images/展示图10.png)
+
+------
+
 ## 🚀 快速开始
 
 ### 📋 系统要求

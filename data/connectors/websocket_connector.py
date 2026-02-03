@@ -114,40 +114,63 @@ class WebSocketConnector(MessageConnector):
         logger.info("WebSocket连接已建立")
     
     def _on_message(self, ws, message):
-        """WebSocket消息接收回调"""
+        """WebSocket消息接收回调
+        
+        支持两种JSON格式：
+        1. 标准格式：{"title": "标题", "content": "内容", "source": "来源"}
+        2. 嵌套格式：{"msg": "{\"title\": \"标题\", \"content\": \"内容\", \"source\": \"来源\"}"}
+        其中source字段可选
+        """
         try:
-            if self.callback:
-                # 获取用户配置的名称
-                source_name = self.config.get('name', '默认')
-                
-                # 尝试解析JSON消息
+            if not self.callback:
+                return
+            
+            # 解析JSON
+            try:
+                data = json.loads(message)
+            except json.JSONDecodeError as e:
+                logger.error(f"WebSocket消息不是有效的JSON格式，跳过: {e}")
+                return
+            
+            # 检查是否是嵌套格式（msg字段包含JSON字符串）
+            if 'msg' in data and isinstance(data['msg'], str):
                 try:
-                    data = json.loads(message)
-                    # 支持自定义source（第3参数）
-                    final_source = data.get('source', source_name)
-                    
-                    msg = Message(
-                        id=data.get('id', str(uuid.uuid4())),
-                        source=final_source,  # 优先使用解析出来的source
-                        title=data.get('title', 'WebSocket'),  # 标题默认显示中文
-                        content=data.get('content', message),
-                        timestamp=data.get('timestamp', time.time()),
-                        metadata=data.get('metadata', {})
-                    )
+                    # 尝试解析msg字段中的JSON字符串
+                    nested_data = json.loads(data['msg'])
+                    data = nested_data
+                    logger.debug("WebSocket检测到嵌套格式，已解析")
                 except json.JSONDecodeError:
-                    # 如果不是JSON，作为纯文本处理
-                    msg = Message(
-                        id=str(uuid.uuid4()),
-                        source=source_name,  # 顶部标签显示用户配置的名称
-                        title='WebSocket',  # 标题显示中文
-                        content=message,
-                        timestamp=time.time(),
-                        metadata={}
-                    )
-                
-                self.callback(msg)
+                    # 如果msg字段不是JSON，就把它当作content
+                    if 'title' not in data and 'content' not in data:
+                        data = {
+                            'title': '新消息',
+                            'content': data['msg']
+                        }
+            
+            # 验证必需字段
+            if 'title' not in data or 'content' not in data:
+                logger.error("WebSocket消息缺少必需字段(title或content)，跳过")
+                return
+            
+            # 获取source（可选字段）
+            source_name = self.config.get('name', 'WebSocket')
+            final_source = data.get('source', source_name)
+            
+            # 创建Message对象
+            msg = Message(
+                id=data.get('id', str(uuid.uuid4())),
+                source=final_source,
+                title=str(data['title']),
+                content=str(data['content']),
+                timestamp=data.get('timestamp', time.time()),
+                metadata=data.get('metadata', {})
+            )
+            
+            logger.info(f"WebSocket消息已解析: title={msg.title}, source={msg.source}")
+            self.callback(msg)
+            
         except Exception as e:
-            logger.error(f"处理WebSocket消息失败: {e}")
+            logger.error(f"处理WebSocket消息失败: {e}", exc_info=True)
     
     def _on_error(self, ws, error):
         """WebSocket错误回调"""

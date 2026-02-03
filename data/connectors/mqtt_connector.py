@@ -267,8 +267,10 @@ class MQTTConnector(MessageConnector):
         """
         MQTT消息接收回调
         
-        解析接收到的MQTT消息并转换为Message对象，然后调用用户回调函数。
-        使用防御性编程，确保任何格式的消息都不会导致崩溃。
+        支持两种JSON格式：
+        1. 标准格式：{"title": "标题", "content": "内容", "source": "来源"}
+        2. 嵌套格式：{"msg": "{\"title\": \"标题\", \"content\": \"内容\", \"source\": \"来源\"}"}
+        其中source字段可选
         
         Args:
             client: MQTT客户端实例
@@ -276,95 +278,126 @@ class MQTTConnector(MessageConnector):
             msg: MQTT消息对象
         """
         try:
-            # 导入错误处理工具
-            from data.connectors.error_handler import (
-                safe_json_parse, 
-                validate_message_data, 
-                safe_callback_invoke
-            )
-            
+            # 打印分隔线
             print("\n" + "="*80)
-            print("🔔 收到MQTT消息")
+            print("📨 收到MQTT消息")
             print("="*80)
             
             # 安全解码payload
             try:
                 payload = msg.payload.decode('utf-8')
+                print(f"✓ UTF-8解码成功")
             except UnicodeDecodeError:
-                # 如果UTF-8解码失败，尝试其他编码
                 try:
                     payload = msg.payload.decode('gbk')
+                    print(f"✓ GBK解码成功")
                 except:
-                    payload = str(msg.payload)
-                    logger.warning("消息解码失败，使用原始字节表示")
+                    logger.error("❌ MQTT消息解码失败，跳过此消息")
+                    print(f"❌ 解码失败，原始字节: {msg.payload}")
+                    print("="*80 + "\n")
+                    return
             
-            print(f"📥 原始payload: {payload}")
+            # 打印原始数据
             print(f"📍 主题: {msg.topic}")
+            print(f"📦 原始payload: {payload}")
+            print(f"📏 长度: {len(payload)} 字符")
             print(f"🔢 QoS: {msg.qos}")
             
-            logger.debug(f"收到MQTT消息: {payload[:200]}...")  # 只记录前200字符
+            logger.info(f"收到MQTT消息 - 主题: {msg.topic}, 长度: {len(payload)}")
             
-            # 安全解析JSON
-            data = safe_json_parse(payload, default={
-                'title': '新消息',
-                'content': payload
-            })
+            # 第一次JSON解析
+            try:
+                data = json.loads(payload)
+                print(f"✓ 第一次JSON解析成功")
+                print(f"📋 解析后的数据:")
+                for key, value in data.items():
+                    value_str = str(value)[:100] + '...' if len(str(value)) > 100 else str(value)
+                    print(f"   - {key}: {value_str}")
+            except json.JSONDecodeError as e:
+                logger.error(f"❌ MQTT消息不是有效的JSON格式: {e}")
+                print(f"❌ JSON解析失败: {e}")
+                print(f"   错误位置: 第{e.lineno}行, 第{e.colno}列")
+                print("="*80 + "\n")
+                return
             
-            print(f"\n📋 解析后的数据:")
-            print(f"  - title: {data.get('title')}")
-            print(f"  - content: {data.get('content')}")
-            print(f"  - 其他字段: {list(data.keys())}")
+            # 检查是否是嵌套格式（msg字段包含JSON字符串）
+            if 'msg' in data and isinstance(data['msg'], str):
+                print(f"🔄 检测到嵌套格式，尝试解析msg字段...")
+                try:
+                    # 尝试解析msg字段中的JSON字符串
+                    nested_data = json.loads(data['msg'])
+                    print(f"✓ msg字段JSON解析成功")
+                    print(f"📋 嵌套数据:")
+                    for key, value in nested_data.items():
+                        print(f"   - {key}: {value}")
+                    # 使用嵌套的数据
+                    data = nested_data
+                except json.JSONDecodeError as e:
+                    print(f"⚠️  msg字段不是有效的JSON，使用原始数据")
+                    # 如果msg字段不是JSON，就把它当作content
+                    if 'title' not in data and 'content' not in data:
+                        data = {
+                            'title': '新消息',
+                            'content': data['msg']
+                        }
             
-            logger.debug(f"解析后的数据: title={data.get('title')}, content={data.get('content')[:50] if data.get('content') else 'None'}...")
+            # 验证必需字段
+            if 'title' not in data:
+                logger.error("❌ MQTT消息缺少必需字段: title")
+                print(f"❌ 缺少必需字段: title")
+                print(f"   当前字段: {list(data.keys())}")
+                print("="*80 + "\n")
+                return
             
-            # 验证和清理消息数据
+            if 'content' not in data:
+                logger.error("❌ MQTT消息缺少必需字段: content")
+                print(f"❌ 缺少必需字段: content")
+                print(f"   当前字段: {list(data.keys())}")
+                print("="*80 + "\n")
+                return
+            
+            print(f"✓ 字段验证通过")
+            
+            # 获取source（可选字段）
             source_name = self._config.get('name', 'MQTT')
-            cleaned_data = validate_message_data(data, source_name)
-            
-            print(f"\n✅ 清理后的数据:")
-            print(f"  - id: {cleaned_data.get('id')}")
-            print(f"  - source: {cleaned_data.get('source')}")
-            print(f"  - title: {cleaned_data.get('title')}")
-            print(f"  - content: {cleaned_data.get('content')}")
-            print(f"  - timestamp: {cleaned_data.get('timestamp')}")
-            
-            logger.debug(f"清理后的数据: title={cleaned_data.get('title')}, content={cleaned_data.get('content')[:50] if cleaned_data.get('content') else 'None'}...")
-            
-            # 创建Message对象
-            # 如果解析出来的数据中有自定义source，优先使用它（支持3参数格式）
             final_source = data.get('source', source_name)
             
+            print(f"📌 最终来源: {final_source}")
+            
+            # 创建Message对象
             message = Message(
-                id=cleaned_data.get('id') or str(uuid.uuid4()),
-                source=final_source,  # 优先使用解析出来的source
-                title=cleaned_data.get('title', 'MQTT'),
-                content=cleaned_data.get('content', payload),
-                timestamp=cleaned_data.get('timestamp') or time.time(),
+                id=data.get('id', str(uuid.uuid4())),
+                source=final_source,
+                title=str(data['title']),
+                content=str(data['content']),
+                timestamp=data.get('timestamp', time.time()),
                 metadata={
                     'topic': msg.topic,
                     'qos': msg.qos,
-                    'retain': msg.retain,
-                    **cleaned_data.get('metadata', {})
+                    'retain': msg.retain
                 }
             )
             
-            print(f"\n📦 创建的Message对象:")
-            print(f"  - id: {message.id}")
-            print(f"  - source: {message.source}")
-            print(f"  - title: {message.title}")
-            print(f"  - content: {message.content}")
-            print(f"  - content长度: {len(message.content)}")
-            print(f"  - timestamp: {message.timestamp}")
+            print(f"✅ 消息对象创建成功:")
+            print(f"   - ID: {message.id}")
+            print(f"   - 来源: {message.source}")
+            print(f"   - 标题: {message.title}")
+            print(f"   - 内容: {message.content[:50]}{'...' if len(message.content) > 50 else ''}")
             print("="*80 + "\n")
             
-            logger.info(f"创建消息对象: id={message.id}, title={message.title}, content_len={len(message.content)}")
+            logger.info(f"✅ MQTT消息已解析: title={message.title}, source={message.source}")
             
-            # 安全调用回调函数
-            safe_callback_invoke(self._callback, message, f"MQTT-{source_name}")
+            # 调用回调函数
+            if self._callback:
+                try:
+                    self._callback(message)
+                except Exception as e:
+                    logger.error(f"❌ MQTT消息回调失败: {e}", exc_info=True)
+                    print(f"❌ 回调函数执行失败: {e}")
                 
         except Exception as e:
-            # 最后的防线：捕获所有异常
-            print(f"\n❌ 处理MQTT消息时出错: {e}")
+            logger.error(f"❌ 处理MQTT消息时出错: {e}", exc_info=True)
+            print(f"❌ 处理消息时出现异常: {e}")
             import traceback
             traceback.print_exc()
-            logger.error(f"处理MQTT消息时出现严重错误: {str(e)}", exc_info=True)
+            print("="*80 + "\n")
