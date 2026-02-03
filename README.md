@@ -10,7 +10,8 @@
     <a href="LICENSE"><img src="https://img.shields.io/badge/LICENSE-CUSTOM_OPEN_SOURCE-orange?style=for-the-badge" alt="License"></a>
     <img src="https://img.shields.io/badge/COVERAGE-80%25-blue?style=for-the-badge&logo=pytest" alt="Coverage">
   </p>
-  
+</div>
+
 ---
 
 ## 📖 项目简介
@@ -311,4 +312,3 @@ WinMsgHub - [模块名称]
   <p>Made with ❤️ by 青云制作_彭明航</p>
   <p><a href="#winmsghub">⬆ 回到顶部</a></p>
 </div>
-
