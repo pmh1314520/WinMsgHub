@@ -174,7 +174,7 @@ pythonw main.py
 
 - **确保手机与电脑都连接在同一局域网内**
 - **电脑上安装好 “WinMsgHub” 并启动**
-- **手机上安装好 “短信转发器” 并启动（下载地址：https://github.com/pppscn/SmsForwarder/releases）**
+- **手机上安装好 “短信转发器” 并启动，下载地址：https://github.com/pppscn/SmsForwarder/releases**
 
 ### **2、配置WinMsgHub（Windows端）**
 
