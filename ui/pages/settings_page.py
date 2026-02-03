@@ -176,6 +176,11 @@ class SettingsPage(QWidget):
         self.minimize_to_tray_check.setToolTip("点击关闭按钮时不退出程序，而是最小化到系统托盘")
         layout.addWidget(self.minimize_to_tray_check)
         
+        # 显示托盘通知
+        self.show_tray_notification_check = QCheckBox("显示托盘最小化通知")
+        self.show_tray_notification_check.setToolTip("最小化到托盘时显示通知提示")
+        layout.addWidget(self.show_tray_notification_check)
+        
         return card
     
     def _create_history_settings(self) -> QFrame:
@@ -336,6 +341,9 @@ class SettingsPage(QWidget):
             self.minimize_to_tray_check.setChecked(
                 self.config_manager.get("system.minimize_to_tray", True)
             )
+            self.show_tray_notification_check.setChecked(
+                self.config_manager.get("system.show_tray_notification", True)
+            )
             
             # 历史记录设置
             self.retention_days_spin.setValue(
@@ -367,6 +375,7 @@ class SettingsPage(QWidget):
         self.auto_start_check.stateChanged.connect(self._on_auto_start_changed)
         self.start_minimized_check.stateChanged.connect(self._trigger_auto_save)
         self.minimize_to_tray_check.stateChanged.connect(self._trigger_auto_save)
+        self.show_tray_notification_check.stateChanged.connect(self._trigger_auto_save)
         self.retention_days_spin.valueChanged.connect(self._trigger_auto_save)
         
         # 系统监控设置
@@ -435,6 +444,7 @@ class SettingsPage(QWidget):
         
         # 窗口设置
         self.config_manager.set("system.minimize_to_tray", self.minimize_to_tray_check.isChecked())
+        self.config_manager.set("system.show_tray_notification", self.show_tray_notification_check.isChecked())
         
         # 历史记录设置
         self.config_manager.set("history.retention_days", self.retention_days_spin.value())
@@ -541,6 +551,7 @@ class SettingsPage(QWidget):
                 self.auto_start_check.setChecked(False)
                 self.start_minimized_check.setChecked(False)
                 self.minimize_to_tray_check.setChecked(True)
+                self.show_tray_notification_check.setChecked(True)
                 
                 # 恢复历史记录设置默认值
                 self.retention_days_spin.setValue(30)

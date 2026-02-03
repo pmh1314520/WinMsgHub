@@ -466,12 +466,15 @@ class WinMsgHubApplication:
         if start_minimized:
             logger.info("启动时最小化到托盘")
             self.main_window.hide()
-            self.tray_icon.show_message(
-                "WinMsgHub",
-                "应用程序已在后台启动",
-                2000,
-                play_sound=False  # 静音
-            )
+            # 检查是否显示托盘通知
+            show_notification = self.config_manager.get("system.show_tray_notification", True)
+            if show_notification:
+                self.tray_icon.show_message(
+                    "WinMsgHub",
+                    "应用程序已在后台启动",
+                    2000,
+                    play_sound=False  # 静音
+                )
         else:
             # 显示主窗口
             self.main_window.show()
@@ -610,12 +613,15 @@ class WinMsgHubApplication:
         """主窗口关闭时（最小化到托盘）"""
         # 只有在窗口关闭时才显示提示，托盘退出时不显示
         if not self._is_quitting:
-            self.tray_icon.show_message(
-                "WinMsgHub",
-                "应用程序已最小化到系统托盘",
-                2000,
-                play_sound=False  # 静音
-            )
+            # 检查是否显示托盘通知
+            show_notification = self.config_manager.get("system.show_tray_notification", True)
+            if show_notification:
+                self.tray_icon.show_message(
+                    "WinMsgHub",
+                    "应用程序已最小化到系统托盘",
+                    2000,
+                    play_sound=False  # 静音
+                )
     
     def _quit_application(self):
         """退出应用程序"""

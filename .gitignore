@@ -68,11 +68,21 @@ data/*.sqlite3
 # PyInstaller打包文件
 build/
 dist/
-*.spec
 
 # Inno Setup 安装包输出
 installer_output/
 Output/
+
+# 打包临时文件和输出文件
+*.exe
+*.msi
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# 但保留资源文件夹中的图标
+!resources/**/*.ico
 
 # 保留示例配置文件
 !config/default_config.json

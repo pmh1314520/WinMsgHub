@@ -28,7 +28,10 @@ DisableProgramGroupPage=yes
 ; 输出设置
 OutputDir=installer_output
 OutputBaseFilename=WinMsgHub_v{#MyAppVersion}_Setup
-SetupIconFile=resources\icons\WinMsgHub_ICON.ico
+; 暂时不设置安装程序图标，使用默认图标
+; 如果需要自定义图标，请确保路径正确
+; SetupIconFile=resources\icons\WinMsgHub_ICON.ico
+UninstallDisplayIcon={app}\{#MyAppExeName}
 
 ; 压缩设置
 Compression=lzma2/max
@@ -36,8 +39,6 @@ SolidCompression=yes
 
 ; 界面设置
 WizardStyle=modern
-WizardImageFile=compiler:WizModernImage-IS.bmp
-WizardSmallImageFile=compiler:WizModernSmallImage-IS.bmp
 
 ; 权限设置（不需要管理员权限）
 PrivilegesRequired=lowest
@@ -51,10 +52,10 @@ ArchitecturesInstallIn64BitMode=x64
 LicenseFile=LICENSE
 
 ; 卸载设置
-UninstallDisplayIcon={app}\{#MyAppExeName}
+; UninstallDisplayIcon 已在输出设置中定义
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+Name: "chinesesimp"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加图标:"; Flags: unchecked
@@ -92,6 +93,48 @@ Filename: "{app}\{#MyAppExeName}"; Description: "启动 {#MyAppName}"; Flags: no
 ; Type: filesandordirs; Name: "{userappdata}\WinMsgHub"
 
 [Code]
+var
+  UninstallPath: String;
+
+// 检查并卸载旧版本
+function UninstallOldVersion(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := True;
+  
+  // 从注册表读取卸载路径
+  if RegQueryStringValue(HKEY_LOCAL_MACHINE, 
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{8F9A2B3C-4D5E-6F7A-8B9C-0D1E2F3A4B5C}_is1',
+    'UninstallString', UninstallPath) then
+  begin
+    // 找到了旧版本
+    if MsgBox('检测到已安装 WinMsgHub。' #13#13 + 
+              '需要先卸载旧版本才能继续安装。' #13#13 + 
+              '是否立即卸载旧版本？', 
+              mbConfirmation, MB_YESNO) = IDYES then
+    begin
+      // 执行静默卸载
+      if not Exec(RemoveQuotes(UninstallPath), '/SILENT', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+      begin
+        MsgBox('卸载旧版本失败，请手动卸载后再安装。', mbError, MB_OK);
+        Result := False;
+      end
+      else if ResultCode <> 0 then
+      begin
+        MsgBox('卸载旧版本失败（错误代码：' + IntToStr(ResultCode) + '），请手动卸载后再安装。', mbError, MB_OK);
+        Result := False;
+      end;
+    end
+    else
+    begin
+      // 用户选择不卸载
+      Result := False;
+    end;
+  end;
+  // 如果没有找到旧版本，返回 True 继续安装
+end;
+
 // 检查是否已安装旧版本
 function InitializeSetup(): Boolean;
 var
@@ -102,11 +145,13 @@ begin
   // 检查程序是否正在运行
   if CheckForMutexes('WinMsgHub_SingleInstance') then
   begin
-    if MsgBox('检测到 WinMsgHub 正在运行。' #13#13 '请先关闭程序再继续安装。', mbError, MB_OK) = IDOK then
-    begin
-      Result := False;
-    end;
+    MsgBox('检测到 WinMsgHub 正在运行。' #13#13 '请先关闭程序再继续安装。', mbError, MB_OK);
+    Result := False;
+    Exit;
   end;
+  
+  // 检查并卸载旧版本
+  Result := UninstallOldVersion();
 end;
 
 // 卸载前检查
