@@ -1,0 +1,67 @@
+{
+  "version": "1.0.0",
+  "message_sources": {
+    "mqtt": {
+      "enabled": true,
+      "broker": "WinMsgHub.pmhs.top/mqtt",
+      "port": 8883,
+      "username": "",
+      "password": "",
+      "topic": "WinMsgHub/notifications",
+      "use_tls": true
+    },
+    "api": {
+      "enabled": false,
+      "endpoints": []
+    },
+    "webhook": {
+      "enabled": false,
+      "port": 8080
+    },
+    "imap": {
+      "enabled": false,
+      "server": "",
+      "port": 993,
+      "username": "",
+      "password": ""
+    },
+    "websocket": [],
+    "rss": [],
+    "file_monitor": [],
+    "clipboard": {
+      "enabled": false
+    }
+  },
+  "popup": {
+    "width": 350,
+    "height": 100,
+    "opacity": 0.95,
+    "background_color": "#ffffff",
+    "background_image": null,
+    "border_radius": 12,
+    "animation_type": "slide",
+    "animation_duration": 300,
+    "display_duration": 5000,
+    "position": "top_right",
+    "sound_file": null,
+    "auto_copy": false,
+    "copy_rules": [],
+    "max_popups": 5
+  },
+  "theme": {
+    "mode": "system"
+  },
+  "filters": {
+    "enabled": true,
+    "rules": []
+  },
+  "system": {
+    "auto_start": false,
+    "minimize_to_tray": true,
+    "start_minimized": false
+  },
+  "history": {
+    "retention_days": 30
+  },
+  "scheduled_tasks": []
+}

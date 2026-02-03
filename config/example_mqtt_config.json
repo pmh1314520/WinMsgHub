@@ -1,0 +1,60 @@
+{
+  "message_sources": {
+    "mqtt": [
+      {
+        "_comment": "本地 MQTT Broker 配置（使用 WinMsgHub 内置的 amqtt 服务）",
+        "enabled": true,
+        "name": "本地服务",
+        "broker": "localhost",
+        "port": 1883,
+        "topic": "/WMH",
+        "use_tls": false,
+        "client_id": "winmsghub-local"
+      },
+      {
+        "_comment": "局域网 MQTT Broker 配置（手机连接到电脑的本地服务）",
+        "enabled": false,
+        "name": "手机消息",
+        "broker": "192.168.0.100",
+        "port": 1883,
+        "topic": "/WMH",
+        "use_tls": false,
+        "client_id": "winmsghub-phone"
+      },
+      {
+        "_comment": "MQTT 消息源配置示例 - 无密码版本（测试用）",
+        "enabled": false,
+        "name": "我的手机",
+        "broker": "pmhs.top",
+        "port": 1883,
+        "topic": "sms/phone",
+        "use_tls": false,
+        "client_id": "winmsghub-pc"
+      },
+      {
+        "_comment": "MQTT 消息源配置示例 - 带密码版本（推荐）",
+        "enabled": false,
+        "name": "工作手机",
+        "broker": "pmhs.top",
+        "port": 1883,
+        "username": "your_username",
+        "password": "your_password",
+        "topic": "sms/work",
+        "use_tls": false,
+        "client_id": "winmsghub-work"
+      },
+      {
+        "_comment": "MQTT 消息源配置示例 - TLS 加密版本（最安全）",
+        "enabled": false,
+        "name": "加密连接",
+        "broker": "pmhs.top",
+        "port": 8883,
+        "username": "your_username",
+        "password": "your_password",
+        "topic": "sms/secure",
+        "use_tls": true,
+        "client_id": "winmsghub-secure"
+      }
+    ]
+  }
+}

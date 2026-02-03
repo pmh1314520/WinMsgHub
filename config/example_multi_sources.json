@@ -1,0 +1,170 @@
+{
+  "version": "2.0.0",
+  "message_sources": {
+    "mqtt": [
+      {
+        "enabled": true,
+        "name": "主服务器",
+        "broker": "WinMsgHub.pmhs.top/mqtt",
+        "port": 8883,
+        "username": "",
+        "password": "",
+        "topic": "WinMsgHub/notifications",
+        "use_tls": true
+      },
+      {
+        "enabled": false,
+        "name": "本地服务器",
+        "broker": "localhost",
+        "port": 1883,
+        "username": "admin",
+        "password": "password",
+        "topic": "local/messages",
+        "use_tls": false
+      }
+    ],
+    "websocket": [
+      {
+        "enabled": false,
+        "name": "实时通知",
+        "url": "wss://example.com/notifications",
+        "headers": {
+          "Authorization": "Bearer YOUR_TOKEN"
+        },
+        "ping_interval": 30,
+        "ping_timeout": 10,
+        "reconnect": true
+      }
+    ],
+    "rss": [
+      {
+        "enabled": false,
+        "name": "技术博客",
+        "url": "https://example.com/feed.xml",
+        "poll_interval": 300,
+        "user_agent": "WinMsgHub RSS Reader/1.0"
+      },
+      {
+        "enabled": false,
+        "name": "新闻订阅",
+        "url": "https://news.example.com/rss",
+        "poll_interval": 600
+      }
+    ],
+    "file_monitor": [
+      {
+        "enabled": false,
+        "name": "日志监控",
+        "path": "C:\\logs",
+        "recursive": true,
+        "file_patterns": ["*.log", "*.txt"],
+        "watch_create": true,
+        "watch_modify": true,
+        "watch_delete": false,
+        "watch_move": false,
+        "include_content": true
+      },
+      {
+        "enabled": false,
+        "name": "下载文件夹",
+        "path": "C:\\Users\\YourName\\Downloads",
+        "recursive": false,
+        "file_patterns": ["*.pdf", "*.docx"],
+        "watch_create": true,
+        "watch_modify": false,
+        "watch_delete": false,
+        "watch_move": false,
+        "include_content": false
+      }
+    ],
+    "clipboard": [
+      {
+        "enabled": false,
+        "name": "剪贴板监控",
+        "poll_interval": 1,
+        "min_length": 1,
+        "max_length": 1000,
+        "ignore_duplicates": true
+      }
+    ],
+    "api": [
+      {
+        "enabled": false,
+        "name": "API轮询",
+        "endpoints": [
+          {
+            "url": "https://api.example.com/messages",
+            "method": "GET",
+            "headers": {
+              "Authorization": "Bearer YOUR_TOKEN"
+            },
+            "poll_interval": 60
+          }
+        ]
+      }
+    ],
+    "webhook": [
+      {
+        "enabled": false,
+        "name": "Webhook服务器",
+        "port": 8080,
+        "path": "/webhook",
+        "secret": "your_secret_key"
+      }
+    ],
+    "imap": [
+      {
+        "enabled": false,
+        "name": "邮箱监控",
+        "server": "imap.gmail.com",
+        "port": 993,
+        "username": "your_email@gmail.com",
+        "password": "your_password",
+        "folder": "INBOX",
+        "poll_interval": 60
+      }
+    ]
+  },
+  "popup": {
+    "width": 400,
+    "height": 120,
+    "opacity": 0.98,
+    "background_color": "#2A3139",
+    "background_image": null,
+    "border_radius": 12,
+    "animation_type": "slide",
+    "animation_duration": 400,
+    "animation_config": {
+      "slide_direction": "right_to_left",
+      "fade_start_opacity": 0.0,
+      "scale_start_size": 0.5,
+      "scale_center": "center",
+      "bounce_direction": "top_to_bottom",
+      "bounce_strength": 1.0,
+      "elastic_direction": "right_to_left",
+      "elastic_strength": 1.0
+    },
+    "display_duration": 5000,
+    "position": "top_right",
+    "sound_file": null,
+    "auto_copy": false,
+    "title_text_overflow": "ellipsis",
+    "content_text_overflow": "wrap",
+    "custom_font_file": null
+  },
+  "theme": {
+    "mode": "system"
+  },
+  "filters": {
+    "enabled": true,
+    "rules": []
+  },
+  "system": {
+    "auto_start": false,
+    "minimize_to_tray": true,
+    "start_minimized": false
+  },
+  "history": {
+    "retention_days": 30
+  }
+}

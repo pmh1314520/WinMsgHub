@@ -1,0 +1,86 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.hypothesis/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+test_*.py
+!tests/test_*.py
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# WinMsgHub specific - 用户数据和配置
+config/config.json
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+*.db
+*.sqlite
+*.sqlite3
+
+# WinMsgHub specific - 临时文件和缓存
+*.lock
+.kiro/
+
+# PyInstaller打包文件
+build/
+dist/
+*.spec
+
+# 保留示例配置文件
+!config/default_config.json
+!config/example_*.json
+
+# 保留所有图片资源
+!resources/**/*.png
+!resources/**/*.jpg
+!resources/**/*.jpeg
+!resources/**/*.gif
+!resources/**/*.svg
+!resources/**/*.ico
+
+# Conda
+.conda/
