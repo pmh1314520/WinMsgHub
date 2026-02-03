@@ -380,14 +380,53 @@ class DashboardPage(QWidget):
         self.sources_value.setStyleSheet("color: #E5C07B; font-size: 13px; font-weight: 500;")
         info_layout.addWidget(self.sources_value, 1, 1)
         
-        # 版本信息
+        # 版本信息和检查更新按钮
         version_label = IconLabel("version", "版本:")
         version_label.setStyleSheet("color: #ABB2BF; font-size: 13px;")
         info_layout.addWidget(version_label, 1, 2)
         
-        version_value = QLabel("v1.0.0")
+        version_container = QWidget()
+        version_layout = QHBoxLayout()
+        version_layout.setContentsMargins(0, 0, 0, 0)
+        version_layout.setSpacing(10)
+        version_container.setLayout(version_layout)
+        
+        from utils.update_checker import UpdateChecker
+        version_value = QLabel(f"v{UpdateChecker.get_current_version()}")
         version_value.setStyleSheet("color: #C678DD; font-size: 13px; font-weight: 500;")
-        info_layout.addWidget(version_value, 1, 3)
+        version_layout.addWidget(version_value)
+        
+        # 检查更新按钮
+        self.check_update_btn = QPushButton("检查更新")
+        self.check_update_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(74, 158, 255, 0.15);
+                color: #4A9EFF;
+                font-size: 11px;
+                font-weight: 500;
+                padding: 3px 10px;
+                border: 1px solid rgba(74, 158, 255, 0.3);
+                border-radius: 10px;
+            }
+            QPushButton:hover {
+                background: rgba(74, 158, 255, 0.25);
+                border: 1px solid rgba(74, 158, 255, 0.5);
+            }
+            QPushButton:pressed {
+                background: rgba(74, 158, 255, 0.35);
+            }
+            QPushButton:disabled {
+                background: rgba(74, 158, 255, 0.05);
+                color: #6A7A8F;
+                border: 1px solid rgba(74, 158, 255, 0.1);
+            }
+        """)
+        self.check_update_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.check_update_btn.clicked.connect(self._check_for_updates)
+        version_layout.addWidget(self.check_update_btn)
+        version_layout.addStretch()
+        
+        info_layout.addWidget(version_container, 1, 3)
         
         info_layout.setColumnStretch(1, 1)
         info_layout.setColumnStretch(3, 1)
@@ -662,6 +701,129 @@ class DashboardPage(QWidget):
                 QMessageBox.information(self, "成功", "历史消息已清空")
             except Exception as e:
                 QMessageBox.critical(self, "错误", f"清空失败: {e}")
+    
+    def _check_for_updates(self):
+        """检查更新"""
+        from PyQt6.QtCore import QThread, pyqtSignal
+        from utils.update_checker import UpdateChecker
+        
+        # 创建更新检查线程
+        class UpdateCheckThread(QThread):
+            update_checked = pyqtSignal(object)
+            
+            def run(self):
+                update_info = UpdateChecker.check_update()
+                self.update_checked.emit(update_info)
+        
+        # 禁用按钮
+        self.check_update_btn.setEnabled(False)
+        self.check_update_btn.setText("检查中...")
+        
+        # 启动检查
+        self._check_thread = UpdateCheckThread()
+        self._check_thread.update_checked.connect(self._on_update_checked)
+        self._check_thread.start()
+    
+    def _on_update_checked(self, update_info):
+        """更新检查完成"""
+        from PyQt6.QtWidgets import QMessageBox
+        from PyQt6.QtCore import QUrl
+        from PyQt6.QtGui import QDesktopServices
+        from utils.update_checker import UpdateChecker
+        
+        # 恢复按钮
+        self.check_update_btn.setEnabled(True)
+        self.check_update_btn.setText("检查更新")
+        
+        if update_info is None:
+            # 已是最新版本
+            msg = QMessageBox(self)
+            msg.setWindowTitle("检查更新")
+            msg.setIcon(QMessageBox.Icon.Information)
+            msg.setText("当前已是最新版本！")
+            msg.setInformativeText(f"当前版本：v{UpdateChecker.get_current_version()}")
+            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg.setStyleSheet("""
+                QMessageBox {
+                    background-color: #282C34;
+                }
+                QMessageBox QLabel {
+                    color: #FFFFFF;
+                    font-size: 14px;
+                }
+                QPushButton {
+                    background-color: #4A9EFF;
+                    color: white;
+                    font-weight: 600;
+                    padding: 8px 20px;
+                    border-radius: 6px;
+                    border: none;
+                    min-width: 80px;
+                }
+                QPushButton:hover {
+                    background-color: #5AAAFF;
+                }
+            """)
+            msg.exec()
+        else:
+            # 发现新版本
+            msg = QMessageBox(self)
+            msg.setWindowTitle("发现新版本")
+            msg.setIcon(QMessageBox.Icon.Information)
+            msg.setText(f"发现新版本 v{update_info['latest_version']}！")
+            
+            details = f"当前版本：v{update_info['current_version']}\n"
+            details += f"最新版本：v{update_info['latest_version']}\n\n"
+            details += "更新内容：\n"
+            details += update_info.get('release_notes', '暂无更新说明')
+            
+            msg.setInformativeText("是否前往下载页面？")
+            msg.setDetailedText(details)
+            msg.setStandardButtons(
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            msg.setDefaultButton(QMessageBox.StandardButton.Yes)
+            
+            yes_btn = msg.button(QMessageBox.StandardButton.Yes)
+            yes_btn.setText("前往下载")
+            no_btn = msg.button(QMessageBox.StandardButton.No)
+            no_btn.setText("稍后再说")
+            
+            msg.setStyleSheet("""
+                QMessageBox {
+                    background-color: #282C34;
+                }
+                QMessageBox QLabel {
+                    color: #FFFFFF;
+                    font-size: 14px;
+                }
+                QTextEdit {
+                    background-color: #1E2127;
+                    color: #ABB2BF;
+                    border: 1px solid #3A4149;
+                    border-radius: 6px;
+                    padding: 10px;
+                    font-family: 'Consolas', monospace;
+                    font-size: 12px;
+                }
+                QPushButton {
+                    background-color: #4A9EFF;
+                    color: white;
+                    font-weight: 600;
+                    padding: 8px 20px;
+                    border-radius: 6px;
+                    border: none;
+                    min-width: 80px;
+                }
+                QPushButton:hover {
+                    background-color: #5AAAFF;
+                }
+            """)
+            
+            result = msg.exec()
+            if result == QMessageBox.StandardButton.Yes:
+                download_url = update_info.get('download_url', UpdateChecker.get_releases_url())
+                QDesktopServices.openUrl(QUrl(download_url))
 
 
 # 自定义折线图组件

@@ -57,14 +57,14 @@ class WinMsgHubApplication:
         self.app.setApplicationVersion("1.0.0")
         
         # 设置应用图标（必须在设置AppUserModelID之前）
-        from pathlib import Path
         from PyQt6.QtGui import QIcon
-        icon_path = Path(__file__).parent / "resources" / "icons" / "WinMsgHub_ICON.ico"
-        if icon_path.exists():
-            self.app.setWindowIcon(QIcon(str(icon_path)))
+        from utils.resource_path import get_resource_path
+        icon_path = get_resource_path("resources/icons/WinMsgHub_ICON.ico")
+        try:
+            self.app.setWindowIcon(QIcon(icon_path))
             logger.info(f"已设置应用图标: {icon_path}")
-        else:
-            logger.warning(f"未找到图标文件: {icon_path}")
+        except Exception as e:
+            logger.warning(f"设置图标失败: {e}")
         
         # 在Windows上设置应用程序用户模型ID
         # 这会让Windows通知显示正确的应用名称和图标

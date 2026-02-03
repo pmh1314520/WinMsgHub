@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QPropertyAnimation, QEasingCurve, QObject, pyqtProperty
 from PyQt6.QtGui import QColor
 from utils.logger import get_logger
+from utils.resource_path import get_resource_url
 
 logger = get_logger(__name__)
 
@@ -277,13 +278,13 @@ class ModernTheme:
         QCheckBox::indicator:checked {{
             background: {ModernTheme.PRIMARY_BLUE};
             border-color: {ModernTheme.PRIMARY_BLUE};
-            image: url(resources/icons/checkbox_checked.svg);
+            image: url({get_resource_url('resources/icons/checkbox_checked.svg')});
         }}
         
         QRadioButton::indicator:checked {{
             background: {ModernTheme.PRIMARY_BLUE};
             border-color: {ModernTheme.PRIMARY_BLUE};
-            image: url(resources/icons/radio_checked.svg);
+            image: url({get_resource_url('resources/icons/radio_checked.svg')});
         }}
         
         QCheckBox::indicator:hover, QRadioButton::indicator:hover {{

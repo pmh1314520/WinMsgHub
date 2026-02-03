@@ -1,88 +1,75 @@
 <div align="center">
-  <img src="resources/icons/WinMsgHub_ICON.png" alt="WinMsgHub Logo" width="128" height="128" style="border-radius:16px; margin-bottom:16px;">
+  <img src="resources/icons/WinMsgHub_ICON.png" alt="WinMsgHub Logo" width="128" height="128">
   <h1>WinMsgHub</h1>
+  <h3>一站式消息接收 · 多源聚合 · 智能通知</h3>
 
-<div align="center">
-	<h4><b>一站式消息接收 · 多源聚合 · 智能通知</b></h4>
+  <p>
+    <img src="https://img.shields.io/badge/PYTHON-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
+    <img src="https://img.shields.io/badge/PYQT6-6.4+-41CD52?style=for-the-badge&logo=qt&logoColor=white" alt="PyQt6">
+    <img src="https://img.shields.io/badge/PLATFORM-WINDOWS_10%2F11-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Platform">
+    <a href="LICENSE"><img src="https://img.shields.io/badge/LICENSE-CUSTOM_OPEN_SOURCE-orange?style=for-the-badge" alt="License"></a>
+    <img src="https://img.shields.io/badge/COVERAGE-80%25-blue?style=for-the-badge&logo=pytest" alt="Coverage">
+  </p>
 </div>
 
-<div align="center" style="display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin: 16px 0;">
-  <img src="https://img.shields.io/badge/PYTHON-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python">
-  <img src="https://img.shields.io/badge/PYQT6-6.4+-41CD52?style=for-the-badge&logo=qt&logoColor=white" alt="PyQt6">
-  <img src="https://img.shields.io/badge/PLATFORM-WINDOWS_10%2F11-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Platform">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/LICENSE-CUSTOM_OPEN_SOURCE-orange?style=for-the-badge" alt="License"></a>
-  <img src="https://img.shields.io/badge/COVERAGE-80%25-blue?style=for-the-badge&logo=pytest" alt="Coverage">
-</div>
-
-<div align="center" style="margin: 16px 0; font-size: 15px;">
-  <a href="#✨-核心特性">功能特性</a> |
-  <a href="#🚀-快速开始">快速开始</a> |
-  <a href="#📁-项目结构">项目结构</a> |
-  <a href="#🛠️-技术栈">技术栈</a> |
-  <a href="#🤝-贡献">贡献</a>
-</div>
-***
+---
 
 ## 📖 项目简介
+
 **WinMsgHub** 是一款基于 Python + PyQt6 开发的 Windows 桌面应用，专为**多源消息聚合、统一管理、智能通知**设计，一站式解决物联网消息、网络推送、本地事件、订阅内容等分散接收的问题。
 
 无论是 MQTT 物联网消息、RSS 新闻订阅、文件变化提醒，还是剪贴板内容、系统硬件事件，WinMsgHub 都能秒级处理并以高度定制化的桌面弹窗展示，同时支持本地数据存储、消息过滤、统计分析等核心能力。
 
 ### 💡 为什么选择 WinMsgHub？
-<div style="background-color:#f8f9fa; padding:16px; border-radius:8px; border-left:4px solid #0078D6; margin:16px 0;">
-  <ul style="margin:0; padding-left:20px; list-style-type: '✅ '">
-    <li><b>多源全覆盖</b>：支持8类消息源，支持添加多个消息源实例（例如：多MQTT服务器/多监控文件夹等）。</li>
-    <li><b>极致定制化</b>：弹窗位置/动画/样式全自定义，你的弹窗你做主。</li>
-    <li><b>实时高效</b>：秒级消息处理，配置热重载（修改立即生效，无需重启软件）。</li>
-    <li><b>安全本地化</b>：SQLite 本地存储所有数据，还支持纯本地MQTT服务，一键启动。</li>
-    <li><b>轻量易用</b>：软件体积极小，可最小化至系统托盘，不占用任务栏，操作界面现代化、易上手。</li>
-  </ul>
-</div>
 
-***
+- ✅ **多源全覆盖**：支持8类消息源，支持添加多个消息源实例（例如：多MQTT服务器/多监控文件夹等）
+- ✅ **极致定制化**：弹窗位置/动画/样式全自定义，你的弹窗你做主
+- ✅ **实时高效**：秒级消息处理，配置热重载（修改立即生效，无需重启软件）
+- ✅ **安全本地化**：SQLite 本地存储所有数据，还支持纯本地MQTT服务，一键启动
+- ✅ **轻量易用**：软件体积极小，可最小化至系统托盘，不占用任务栏，操作界面现代化、易上手
+
+---
 
 ## ✨ 核心特性
+
 ### 🔌 8大消息源全支持
-<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:16px 0;">
-  <div style="background-color:#f8f9fa; padding:16px; border-radius:8px;">
-    <h4 style="margin:0 0 8px 0; color:#0078D6; display:flex; align-items:center;">📡 网络消息源</h4>
-    <ul style="margin:0; padding-left:20px; line-height:1.8;">
-      <li>MQTT（支持 TLS 加密连接）</li>
-      <li>WebSocket 实时双向通信</li>
-      <li>API 定时轮询（HTTP/HTTPS）</li>
-      <li>Webhook 内置服务器接收推送</li>
-      <li>IMAP 邮件服务器实时监听</li>
-    </ul>
-  </div>
-  <div style="background-color:#f8f9fa; padding:16px; border-radius:8px;">
-    <h4 style="margin:0 0 8px 0; color:#0078D6; display:flex; align-items:center;">💻 本地消息源</h4>
-    <ul style="margin:0; padding-left:20px; line-height:1.8;">
-      <li>RSS/Atom 博客/新闻订阅解析</li>
-      <li>文件夹/文件变化监控（增删改移）</li>
-      <li>剪贴板内容实时监控（文本/文件）</li>
-    </ul>
-  </div>
-</div>
-<p align="right"><i>💡 所有消息源均支持<b>多实例</b>和<b>单独启用/禁用</b>！</i></p>
+
+#### 📡 网络消息源
+- **MQTT**（支持 TLS 加密连接）
+- **WebSocket** 实时双向通信
+- **API** 定时轮询（HTTP/HTTPS）
+- **Webhook** 内置服务器接收推送
+- **IMAP** 邮件服务器实时监听
+
+#### 💻 本地消息源
+- **RSS/Atom** 博客/新闻订阅解析
+- **文件监控** 文件夹/文件变化监控（增删改移）
+- **剪贴板** 内容实时监控（文本/文件）
+
+> 💡 所有消息源均支持**多实例**和**单独启用/禁用**！
 
 ### 🎨 高度可定制的通知弹窗
+
 | 📍 位置定制 | 🎬 动画效果 | 🎨 样式自定义 |
 | :---: | :---: | :---: |
-| 8个位置可选<br>「四角+四边」<br> | 3种动画效果<br>「滑入/淡入/缩放」<br>支持动画速度调节 | 完全自定义<br>尺寸/透明度/颜色/字体/音效<br> |
+| 8个位置可选<br>四角+四边 | 3种动画效果<br>滑入/淡入/缩放<br>支持动画速度调节 | 完全自定义<br>尺寸/透明度/颜色<br>字体/音效 |
 
 ### 🌟 其他核心亮点
-- 💾 **消息管理**：SQLite本地存储，支持**关键词搜索/时间筛选/数据导出**
+
+- 💾 **消息管理**：SQLite本地存储，支持关键词搜索/时间筛选/数据导出
 - 🎯 **智能过滤**：自定义过滤规则（包含/排除关键词），只接收重要消息
 - 📊 **统计面板**：实时查看消息数量/各源占比/连接状态，支持数据可视化
 - 🔔 **系统托盘**：最小化至托盘，支持托盘右键快捷操作/托盘消息提示
-- ⚡ **热重载**：所有配置修改**立即生效**，无需重启应用
+- ⚡ **热重载**：所有配置修改立即生效，无需重启应用
 - 🔄 **自动更新**：一键检查GitHub最新版本，及时获取新功能
 - 📝 **完善日志**：分级日志记录（INFO/DEBUG/ERROR），方便问题排查
 
-***
+---
 
 ## 🚀 快速开始
+
 ### 📋 系统要求
+
 | 项目 | 要求 |
 | :--- | :--- |
 | 操作系统 | Windows 10 64位 / Windows 11（推荐） |
@@ -91,48 +78,60 @@
 | 依赖 | 无额外系统依赖，pip 自动安装所有Python包 |
 
 ### 📦 安装与运行
+
 <details>
 <summary><b>📥 点击展开 - 安装步骤</b></summary>
+
 <br>
-1. 克隆/下载项目到本地，进入项目根目录
-   ```bash
-   cd WinMsgHub
-   ```
-2. 安装项目依赖（建议使用虚拟环境）
-   ```bash
-   # 推荐：创建虚拟环境
-   python -m venv venv
-   venv\Scripts\activate
-   # 安装依赖
-   pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
-   ```
-3. 运行应用（三种方式可选）
-   ```bash
-   # 方式1：批处理运行（推荐，自动激活虚拟环境）
-   run.bat
-   # 方式2：直接运行（显示控制台日志）
-   python main.py
-   # 方式3：无控制台窗口运行
-   pythonw main.py
-   ```
+
+**1. 克隆/下载项目到本地，进入项目根目录**
+```bash
+cd WinMsgHub
+```
+
+**2. 安装项目依赖（建议使用虚拟环境）**
+```bash
+# 推荐：创建虚拟环境
+python -m venv venv
+venv\Scripts\activate
+
+# 安装依赖
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+**3. 运行应用（三种方式可选）**
+```bash
+# 方式1：批处理运行（推荐，自动激活虚拟环境）
+run.bat
+
+# 方式2：直接运行（显示控制台日志）
+python main.py
+
+# 方式3：无控制台窗口运行
+pythonw main.py
+```
+
 </details>
 
 ### ⚙️ 快速配置消息源
+
 1. 启动应用后，点击左侧导航栏「**消息源配置**」
 2. 选择需要配置的消息源类型（如MQTT/文件监控）标签页
 3. 点击「**➕ 添加**」按钮，填写配置信息（带*为必填项）
 4. 点击「**保存**」，配置**立即生效**（无需重启）！
 
-> 📄 配置示例：查看项目内 `config/example_multi_sources.json` 了解所有消息源的完整配置参数。
+> 📄 **配置示例**：查看项目内 `config/example_multi_sources.json` 了解所有消息源的完整配置参数。
 
-***
+---
 
 ## 📁 项目结构
-采用**分层架构**设计（UI层/核心层/数据层/工具层），模块解耦、易扩展，便于后续新增消息源和功能，项目结构如下：
+
+采用**分层架构**设计（UI层/核心层/数据层/工具层），模块解耦、易扩展，便于后续新增消息源和功能。
+
 <details>
 <summary><b>📂 点击展开 - 完整项目结构</b></summary>
-<br>
-```plaintext
+
+```
 WinMsgHub/
 ├── main.py                      # 应用程序入口（初始化/启动）
 ├── run.bat                      # 快速运行批处理文件
@@ -181,6 +180,7 @@ WinMsgHub/
 │   ├── update_checker.py        # 更新检查器（GitHub Release API）
 │   ├── network_utils.py         # 网络工具（IP获取等）
 │   ├── async_worker.py          # 异步任务工作器
+│   ├── resource_path.py         # 资源路径工具（支持打包）
 │   └── single_instance.py       # 单实例锁（防止重复启动）
 ├── config/                      # 配置文件目录
 │   ├── default_config.json      # 默认配置模板
@@ -195,79 +195,28 @@ WinMsgHub/
     ├── test_mqtt_connector.py   # MQTT连接器测试
     └── test_message_connector.py # 消息连接器测试
 ```
+
 </details>
-***
+
+---
 
 ## 🛠️ 技术栈
-<div align="center">
-<table style="width:100%; max-width:1000px; border-collapse:collapse;">
-  <tr style="background-color:#f8f9fa; height:40px;">
-    <th style="border:1px solid #e9ecef; padding:8px; width:20%;">类别</th>
-    <th style="border:1px solid #e9ecef; padding:8px; width:30%;">技术/库</th>
-    <th style="border:1px solid #e9ecef; padding:8px; width:50%;">核心用途</th>
-  </tr>
-  <tr>
-    <td style="border:1px solid #e9ecef; padding:8px; text-align:center; font-weight:bold;">主开发语言</td>
-    <td style="border:1px solid #e9ecef; padding:8px;">Python 3.9+</td>
-    <td style="border:1px solid #e9ecef; padding:8px;">应用核心开发，简洁易扩展</td>
-  </tr>
-  <tr style="background-color:#f8f9fa;">
-    <td style="border:1px solid #e9ecef; padding:8px; text-align:center; font-weight:bold;">GUI框架</td>
-    <td style="border:1px solid #e9ecef; padding:8px;">PyQt6</td>
-    <td style="border:1px solid #e9ecef; padding:8px;">现代化桌面界面，弹窗/托盘/主题/SVG图标支持</td>
-  </tr>
-  <tr>
-    <td style="border:1px solid #e9ecef; padding:8px; text-align:center; font-weight:bold;">本地存储</td>
-    <td style="border:1px solid #e9ecef; padding:8px;">SQLite + sqlite3</td>
-    <td style="border:1px solid #e9ecef; padding:8px;">轻量无服务，存储消息/配置/统计数据</td>
-  </tr>
-  <tr style="background-color:#f8f9fa;">
-    <td style="border:1px solid #e9ecef; padding:8px; text-align:center; font-weight:bold; vertical-align:top;">网络通信</td>
-    <td style="border:1px solid #e9ecef; padding:8px; vertical-align:top;">paho-mqtt/websocket-client/requests/imaplib</td>
-    <td style="border:1px solid #e9ecef; padding:8px; vertical-align:top;">MQTT/WebSocket/API/Webhook/IMAP 协议支持</td>
-  </tr>
-  <tr>
-    <td style="border:1px solid #e9ecef; padding:8px; text-align:center; font-weight:bold; vertical-align:top;">MQTT服务</td>
-    <td style="border:1px solid #e9ecef; padding:8px; vertical-align:top;">aMQTT</td>
-    <td style="border:1px solid #e9ecef; padding:8px; vertical-align:top;">内置本地MQTT Broker，支持一键启动</td>
-  </tr>
-  <tr style="background-color:#f8f9fa;">
-    <td style="border:1px solid #e9ecef; padding:8px; text-align:center; font-weight:bold; vertical-align:top;">本地监控</td>
-    <td style="border:1px solid #e9ecef; padding:8px; vertical-align:top;">watchdog/pyperclip</td>
-    <td style="border:1px solid #e9ecef; padding:8px; vertical-align:top;">文件监控/剪贴板监听</td>
-  </tr>
-  <tr>
-    <td style="border:1px solid #e9ecef; padding:8px; text-align:center; font-weight:bold;">解析工具</td>
-    <td style="border:1px solid #e9ecef; padding:8px;">feedparser</td>
-    <td style="border:1px solid #e9ecef; padding:8px;">RSS/Atom 订阅内容解析</td>
-  </tr>
-  <tr style="background-color:#f8f9fa;">
-    <td style="border:1px solid #e9ecef; padding:8px; text-align:center; font-weight:bold;">系统监控</td>
-    <td style="border:1px solid #e9ecef; padding:8px;">psutil</td>
-    <td style="border:1px solid #e9ecef; padding:8px;">CPU/内存/磁盘/网络监控</td>
-  </tr>
-  <tr>
-    <td style="border:1px solid #e9ecef; padding:8px; text-align:center; font-weight:bold;">安全加密</td>
-    <td style="border:1px solid #e9ecef; padding:8px;">cryptography</td>
-    <td style="border:1px solid #e9ecef; padding:8px;">TLS/SSL 加密连接，数据加密</td>
-  </tr>
-  <tr style="background-color:#f8f9fa;">
-    <td style="border:1px solid #e9ecef; padding:8px; text-align:center; font-weight:bold;">异步支持</td>
-    <td style="border:1px solid #e9ecef; padding:8px;">asyncio/aiofiles</td>
-    <td style="border:1px solid #e9ecef; padding:8px;">异步IO操作，提升性能避免卡顿</td>
-  </tr>
-  <tr>
-    <td style="border:1px solid #e9ecef; padding:8px; text-align:center; font-weight:bold;">版本管理</td>
-    <td style="border:1px solid #e9ecef; padding:8px;">packaging</td>
-    <td style="border:1px solid #e9ecef; padding:8px;">版本号比较，支持自动更新检查</td>
-  </tr>
-  <tr style="background-color:#f8f9fa;">
-    <td style="border:1px solid #e9ecef; padding:8px; text-align:center; font-weight:bold;">测试框架</td>
-    <td style="border:1px solid #e9ecef; padding:8px;">pytest + Hypothesis + coverage</td>
-    <td style="border:1px solid #e9ecef; padding:8px;">单元测试/属性测试/测试覆盖率统计</td>
-  </tr>
-</table>
-</div>
+
+| 类别 | 技术/库 | 核心用途 |
+| :---: | :--- | :--- |
+| **主开发语言** | Python 3.9+ | 应用核心开发，简洁易扩展 |
+| **GUI框架** | PyQt6 | 现代化桌面界面，弹窗/托盘/主题/SVG图标支持 |
+| **本地存储** | SQLite + sqlite3 | 轻量无服务，存储消息/配置/统计数据 |
+| **网络通信** | paho-mqtt / websocket-client / requests / imaplib | MQTT/WebSocket/API/Webhook/IMAP 协议支持 |
+| **MQTT服务** | aMQTT | 内置本地MQTT Broker，支持一键启动 |
+| **本地监控** | watchdog / pyperclip | 文件监控/剪贴板监听 |
+| **解析工具** | feedparser | RSS/Atom 订阅内容解析 |
+| **系统监控** | psutil | CPU/内存/磁盘/网络监控 |
+| **安全加密** | cryptography | TLS/SSL 加密连接，数据加密 |
+| **异步支持** | asyncio / aiofiles | 异步IO操作，提升性能避免卡顿 |
+| **版本管理** | packaging | 版本号比较，支持自动更新检查 |
+| **测试框架** | pytest + Hypothesis + coverage | 单元测试/属性测试/测试覆盖率统计 |
+
 ---
 
 ## 📄 开源协议
@@ -314,22 +263,26 @@ WinMsgHub - [模块名称]
 
 ### 📖 完整协议
 
-完整的许可协议内容请查看 **[LICENSE](LICENSE)** 文件。
+完整的许可协议内容请查看 [LICENSE](LICENSE) 文件。
 
 ---
 
-## 👤 作者（QQ：2124691573）
+## 👤 作者
+
 <div align="center">
   <h3>青云制作_彭明航</h3>
+  <p><b>QQ：2124691573</b></p>
   <p>这是我开源的第二款软件项目，如果它对您有所帮助，希望能给个⭐ Star 支持一下！</p>
   <p>您的支持是项目持续开发的最大动力 💪</p>
 </div>
 
-
+---
 
 ## 🙏 致谢
+
 感谢以下优秀的开源项目，WinMsgHub的开发离不开它们的支持：
-<div align="center" style="display:flex; flex-wrap:wrap; justify-content:center; gap:16px; margin:16px 0;">
+
+<div align="center">
   <a href="https://www.riverbankcomputing.com/software/pyqt/"><img src="https://img.shields.io/badge/PyQt6-41CD52?logo=qt&logoColor=white" alt="PyQt6"></a>
   <a href="https://www.eclipse.org/paho/"><img src="https://img.shields.io/badge/paho--mqtt-E6522C?logo=eclipse&logoColor=white" alt="paho-mqtt"></a>
   <a href="https://github.com/Yakifo/amqtt"><img src="https://img.shields.io/badge/aMQTT-E6522C?logo=mqtt&logoColor=white" alt="aMQTT"></a>
@@ -341,20 +294,22 @@ WinMsgHub - [模块名称]
   <a href="https://requests.readthedocs.io/"><img src="https://img.shields.io/badge/requests-3776AB?logo=python&logoColor=white" alt="requests"></a>
   <a href="https://pypi.org/project/pyperclip/"><img src="https://img.shields.io/badge/pyperclip-3776AB?logo=python&logoColor=white" alt="pyperclip"></a>
 </div>
-------
 
+---
 
-<h4 align="center">☕请作者喝杯奶茶☕</h4>
+<h3 align="center">☕ 请作者喝杯奶茶 ☕</h3>
 
 <div align="center">
-    <img src="resources/icons/微信收款码.png" width="200" alt="微信收款码"/>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-    <img src="resources/icons/支付宝收款码.jpg" width="183" alt="支付宝收款码"/>
+  <img src="resources/images/微信收款码.png" width="200" alt="微信收款码">
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="resources/images/支付宝收款码.jpg" width="183" alt="支付宝收款码">
 </div>
-------
+
+
+---
 
 <div align="center">
   <p>✨ <b>WinMsgHub</b> - 让Windows跨设备接收消息 ✨</p>
   <p>Made with ❤️ by 青云制作_彭明航</p>
-  <a href="#winmsghub" style="text-decoration:none; color:#0078D6; font-weight:bold;">⬆ 回到顶部</a>
+  <p><a href="#winmsghub">⬆ 回到顶部</a></p>
 </div>

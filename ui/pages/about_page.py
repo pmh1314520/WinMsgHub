@@ -15,22 +15,11 @@ from ui.svg_icons import SvgIcon
 from utils.update_checker import UpdateChecker
 
 
-class UpdateCheckThread(QThread):
-    """更新检查线程"""
-    update_checked = pyqtSignal(object)  # 检查完成信号，传递更新信息或None
-    
-    def run(self):
-        """执行更新检查"""
-        update_info = UpdateChecker.check_update()
-        self.update_checked.emit(update_info)
-
-
 class AboutPage(QWidget):
     """关于页面 - 显示应用信息"""
     
     def __init__(self):
         super().__init__()
-        self._check_thread = None
         self._setup_ui()
     
     def _setup_ui(self):
@@ -97,12 +86,12 @@ class AboutPage(QWidget):
         
         # Logo图标 - 更小更精致
         from PyQt6.QtGui import QPixmap
-        from pathlib import Path
         
         logo = QLabel()
-        icon_path = Path(__file__).parent.parent.parent / "resources" / "icons" / "WinMsgHub_ICON.png"
-        if icon_path.exists():
-            pixmap = QPixmap(str(icon_path))
+        from utils.resource_path import get_resource_path
+        icon_path = get_resource_path("resources/icons/WinMsgHub_ICON.png")
+        try:
+            pixmap = QPixmap(icon_path)
             if not pixmap.isNull():
                 scaled_pixmap = pixmap.scaled(
                     80, 80,
@@ -113,7 +102,7 @@ class AboutPage(QWidget):
             else:
                 # 使用 SVG 图标作为后备
                 logo.setPixmap(SvgIcon.get_pixmap("phone", "#4A9EFF", 60))
-        else:
+        except Exception as e:
             # 使用 SVG 图标作为后备
             logo.setPixmap(SvgIcon.get_pixmap("phone", "#4A9EFF", 60))
         
@@ -132,48 +121,14 @@ class AboutPage(QWidget):
         layout.addWidget(app_name)
         
         # 版本号 - 简单标签
-        version_layout = QHBoxLayout()
-        version_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        version_layout.setSpacing(10)
-        
         version = QLabel(f"v{UpdateChecker.get_current_version()}")
         version.setStyleSheet("""
             font-size: 14px;
             color: #4A9EFF;
             font-weight: 500;
         """)
-        version_layout.addWidget(version)
-        
-        # 检查更新按钮
-        self.check_update_btn = QPushButton("检查更新")
-        self.check_update_btn.setStyleSheet("""
-            QPushButton {
-                background: rgba(74, 158, 255, 0.15);
-                color: #4A9EFF;
-                font-size: 12px;
-                font-weight: 500;
-                padding: 4px 12px;
-                border: 1px solid rgba(74, 158, 255, 0.3);
-                border-radius: 12px;
-            }
-            QPushButton:hover {
-                background: rgba(74, 158, 255, 0.25);
-                border: 1px solid rgba(74, 158, 255, 0.5);
-            }
-            QPushButton:pressed {
-                background: rgba(74, 158, 255, 0.35);
-            }
-            QPushButton:disabled {
-                background: rgba(74, 158, 255, 0.05);
-                color: #6A7A8F;
-                border: 1px solid rgba(74, 158, 255, 0.1);
-            }
-        """)
-        self.check_update_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.check_update_btn.clicked.connect(self._check_for_updates)
-        version_layout.addWidget(self.check_update_btn)
-        
-        layout.addLayout(version_layout)
+        version.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(version)
         
         # 标语 - 简洁
         slogan = QLabel("现代化的 Windows 消息聚合中心")
@@ -597,125 +552,3 @@ class AboutPage(QWidget):
     def _open_url(self, url: str):
         """打开URL"""
         QDesktopServices.openUrl(QUrl(url))
-    
-    def _check_for_updates(self):
-        """检查更新"""
-        # 禁用按钮，防止重复点击
-        self.check_update_btn.setEnabled(False)
-        self.check_update_btn.setText("检查中...")
-        
-        # 创建并启动检查线程
-        self._check_thread = UpdateCheckThread()
-        self._check_thread.update_checked.connect(self._on_update_checked)
-        self._check_thread.start()
-    
-    def _on_update_checked(self, update_info):
-        """更新检查完成"""
-        # 恢复按钮状态
-        self.check_update_btn.setEnabled(True)
-        self.check_update_btn.setText("检查更新")
-        
-        if update_info is None:
-            # 没有更新或检查失败
-            msg = QMessageBox(self)
-            msg.setWindowTitle("检查更新")
-            msg.setIcon(QMessageBox.Icon.Information)
-            msg.setText("当前已是最新版本！")
-            msg.setInformativeText(f"当前版本：v{UpdateChecker.get_current_version()}")
-            msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-            
-            # 设置样式
-            msg.setStyleSheet("""
-                QMessageBox {
-                    background-color: #282C34;
-                }
-                QMessageBox QLabel {
-                    color: #FFFFFF;
-                    font-size: 14px;
-                }
-                QPushButton {
-                    background-color: #4A9EFF;
-                    color: white;
-                    font-weight: 600;
-                    padding: 8px 20px;
-                    border-radius: 6px;
-                    border: none;
-                    min-width: 80px;
-                }
-                QPushButton:hover {
-                    background-color: #5AAAFF;
-                }
-            """)
-            
-            msg.exec()
-        else:
-            # 发现新版本
-            self._show_update_dialog(update_info)
-    
-    def _show_update_dialog(self, update_info: dict):
-        """显示更新对话框"""
-        msg = QMessageBox(self)
-        msg.setWindowTitle("发现新版本")
-        msg.setIcon(QMessageBox.Icon.Information)
-        msg.setText(f"发现新版本 v{update_info['latest_version']}！")
-        
-        # 构建详细信息
-        details = f"当前版本：v{update_info['current_version']}\n"
-        details += f"最新版本：v{update_info['latest_version']}\n\n"
-        details += "更新内容：\n"
-        details += update_info.get('release_notes', '暂无更新说明')
-        
-        msg.setInformativeText("是否前往下载页面？")
-        msg.setDetailedText(details)
-        msg.setStandardButtons(
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        msg.setDefaultButton(QMessageBox.StandardButton.Yes)
-        
-        # 设置按钮文本
-        yes_btn = msg.button(QMessageBox.StandardButton.Yes)
-        yes_btn.setText("前往下载")
-        no_btn = msg.button(QMessageBox.StandardButton.No)
-        no_btn.setText("稍后再说")
-        
-        # 设置样式
-        msg.setStyleSheet("""
-            QMessageBox {
-                background-color: #282C34;
-            }
-            QMessageBox QLabel {
-                color: #FFFFFF;
-                font-size: 14px;
-            }
-            QTextEdit {
-                background-color: #1E2127;
-                color: #ABB2BF;
-                border: 1px solid #3A4149;
-                border-radius: 6px;
-                padding: 10px;
-                font-family: 'Consolas', monospace;
-                font-size: 12px;
-            }
-            QPushButton {
-                background-color: #4A9EFF;
-                color: white;
-                font-weight: 600;
-                padding: 8px 20px;
-                border-radius: 6px;
-                border: none;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #5AAAFF;
-            }
-            QPushButton:pressed {
-                background-color: #3A8EEF;
-            }
-        """)
-        
-        # 显示对话框并处理结果
-        result = msg.exec()
-        if result == QMessageBox.StandardButton.Yes:
-            # 打开下载页面
-            download_url = update_info.get('download_url', UpdateChecker.get_releases_url())
-            self._open_url(download_url)

@@ -56,15 +56,15 @@ class TrayIcon(QObject):
     def _set_default_icon(self):
         """设置默认图标"""
         # 尝试加载自定义图标
-        from pathlib import Path
-        icon_path = Path(__file__).parent.parent / "resources" / "icons" / "WinMsgHub_ICON.ico"
+        from utils.resource_path import get_resource_path
+        icon_path = get_resource_path("resources/icons/WinMsgHub_ICON.ico")
         
-        if icon_path.exists():
-            icon = QIcon(str(icon_path))
+        try:
+            icon = QIcon(icon_path)
             logger.info(f"已加载自定义图标: {icon_path}")
-        else:
+        except Exception as e:
             # 如果找不到图标文件，创建一个简单的默认图标
-            logger.warning(f"未找到图标文件: {icon_path}，使用默认图标")
+            logger.warning(f"加载图标失败: {e}，使用默认图标")
             from PyQt6.QtGui import QPixmap, QPainter, QColor
             
             pixmap = QPixmap(64, 64)

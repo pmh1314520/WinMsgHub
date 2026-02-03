@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont
 from utils.network_utils import get_local_ip
+from utils.resource_path import get_resource_url
 from ui.svg_icons import SvgIcon
 from ui.icon_label import IconLabel
 from utils.logger import get_logger
@@ -436,9 +437,9 @@ class LocalMQTTPage(QWidget):
             QCheckBox::indicator:checked {
                 background-color: #61AFEF;
                 border-color: #61AFEF;
-                image: url(resources/icons/checkbox_checked.svg);
+                image: url(%s);
             }
-        """)
+        """ % get_resource_url('resources/icons/checkbox_checked.svg'))
         
         # 从配置加载状态
         auto_start = self.config_manager.get("local_mqtt.auto_start", False)

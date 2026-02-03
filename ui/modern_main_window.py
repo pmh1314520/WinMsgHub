@@ -54,11 +54,13 @@ class ModernMainWindow(QMainWindow):
         self.resize(1400, 900)
         
         # 设置窗口图标
-        from pathlib import Path
-        icon_path = Path(__file__).parent.parent / "resources" / "icons" / "WinMsgHub_ICON.ico"
-        if icon_path.exists():
-            from PyQt6.QtGui import QIcon
-            self.setWindowIcon(QIcon(str(icon_path)))
+        from PyQt6.QtGui import QIcon
+        from utils.resource_path import get_resource_path
+        icon_path = get_resource_path("resources/icons/WinMsgHub_ICON.ico")
+        try:
+            self.setWindowIcon(QIcon(icon_path))
+        except Exception as e:
+            logger.warning(f"设置窗口图标失败: {e}")
         
         # 创建中心部件
         central_widget = QWidget()
@@ -113,7 +115,8 @@ class ModernMainWindow(QMainWindow):
         # Logo图标 - 使用ico文件
         logo_label = QLabel()
         from PyQt6.QtGui import QPixmap
-        logo_pixmap = QPixmap("resources/icons/WinMsgHub_ICON.ico")
+        from utils.resource_path import get_resource_path
+        logo_pixmap = QPixmap(get_resource_path("resources/icons/WinMsgHub_ICON.ico"))
         if not logo_pixmap.isNull():
             logo_label.setPixmap(logo_pixmap.scaled(48, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         else:

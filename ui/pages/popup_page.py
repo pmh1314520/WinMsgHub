@@ -1207,8 +1207,9 @@ class PopupPage(QWidget):
         # 初始化变量
         self.selected_bg_image = None
         # 初始化默认音效
+        from utils.resource_path import get_resource_path
         import os
-        default_sound = os.path.join("resources", "sounds", "default.mp3")
+        default_sound = get_resource_path("resources/sounds/default.mp3")
         if os.path.exists(default_sound):
             self.selected_sound = default_sound
         else:
@@ -1760,8 +1761,9 @@ class PopupPage(QWidget):
             self.scale_center_combo.setCurrentIndex(scale_center_map.get(scale_center, 0))
             
             # 音效
+            from utils.resource_path import get_resource_path
             import os
-            default_sound = os.path.join("resources", "sounds", "default.mp3")
+            default_sound = get_resource_path("resources/sounds/default.mp3")
             
             # 检查配置中是否存在sound_file键
             if "sound_file" not in popup_config:
@@ -2441,8 +2443,9 @@ class PopupPage(QWidget):
             self.animation_combo.setCurrentIndex(0)  # 滑入
             
             # 恢复默认音效
+            from utils.resource_path import get_resource_path
             import os
-            default_sound = os.path.join("resources", "sounds", "default.mp3")
+            default_sound = get_resource_path("resources/sounds/default.mp3")
             if os.path.exists(default_sound):
                 self.selected_sound = default_sound
                 self.sound_label.setText(os.path.basename(default_sound))
@@ -2883,8 +2886,9 @@ class PopupPage(QWidget):
         self.animation_combo.setCurrentIndex(0)  # 滑入
         
         # 恢复默认音效
+        from utils.resource_path import get_resource_path
         import os
-        default_sound = os.path.join("resources", "sounds", "default.mp3")
+        default_sound = get_resource_path("resources/sounds/default.mp3")
         if os.path.exists(default_sound):
             self.selected_sound = default_sound
             self.sound_label.setText(os.path.basename(default_sound))
