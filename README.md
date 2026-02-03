@@ -300,13 +300,11 @@ WinMsgHub - [模块名称]
 <h3 align="center">☕ 请作者喝杯奶茶 ☕</h3>
 
 <div align="center">
-  <img src="resources/images/微信收款码.png" width="200" alt="微信收款码">
-  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="resources/images/支付宝收款码.jpg" width="183" alt="支付宝收款码">
+    <img src="resources/icons/微信收款码.png" width="200" alt="微信收款码"/>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    <img src="resources/icons/支付宝收款码.jpg" width="183" alt="支付宝收款码"/>
 </div>
-
-
----
+------
 
 <div align="center">
   <p>✨ <b>WinMsgHub</b> - 让Windows跨设备接收消息 ✨</p>
