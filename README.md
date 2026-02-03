@@ -207,7 +207,7 @@ pythonw main.py
 
 ### **5、实测图**
 
-![](resources\images\展示图11.png)
+![](resources/images/展示图11.png)
 
 ------
 
