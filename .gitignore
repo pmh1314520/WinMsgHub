@@ -70,6 +70,10 @@ build/
 dist/
 *.spec
 
+# Inno Setup 安装包输出
+installer_output/
+Output/
+
 # 保留示例配置文件
 !config/default_config.json
 !config/example_*.json
