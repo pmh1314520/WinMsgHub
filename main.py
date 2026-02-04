@@ -54,7 +54,7 @@ class WinMsgHubApplication:
         self.app.setApplicationDisplayName("WinMsgHub")
         
         # 设置应用程序版本
-        self.app.setApplicationVersion("1.1.0")
+        self.app.setApplicationVersion("1.1.3")
         
         # 设置应用图标（必须在设置AppUserModelID之前）
         from PyQt6.QtGui import QIcon

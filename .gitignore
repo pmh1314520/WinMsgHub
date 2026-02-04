@@ -64,6 +64,8 @@ data/*.sqlite3
 # WinMsgHub specific - 临时文件和缓存
 *.lock
 .kiro/
+cache/
+*.cache
 
 # PyInstaller打包文件
 build/

@@ -4,7 +4,6 @@ WinMsgHub - 连接器管理器
 版权所有 - 二次开发必须开源并标明原作者，允许商用
 """
 
-import logging
 from typing import Dict, List
 from data.connectors import (
     MQTTConnector,
@@ -16,8 +15,9 @@ from data.connectors import (
     FileMonitorConnector,
     ClipboardConnector
 )
+from utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ConnectorManager:
@@ -125,12 +125,12 @@ class ConnectorManager:
                     'connector': connector,
                     'config': config
                 })
-                logger.info(f"连接器已启动: {unique_name}")
+                logger.info(f"✅ 连接器已启动: {unique_name}")
             else:
-                logger.error(f"连接器启动失败: {unique_name}")
+                logger.error(f"❌ 连接器启动失败: {unique_name}")
                 
         except Exception as e:
-            logger.error(f"创建连接器失败 ({connector_type}): {e}")
+            logger.error(f"❌ 创建连接器失败 ({connector_type}): {e}", exc_info=True)
     
     def disconnect_all(self):
         """断开所有连接器"""

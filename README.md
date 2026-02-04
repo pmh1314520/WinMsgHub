@@ -174,7 +174,7 @@ pythonw main.py
 
 - **确保手机与电脑都连接在同一局域网内**
 - **电脑上安装好 “WinMsgHub” 并启动**
-- **手机上安装好 “短信转发器” 并启动（下载地址：https://github.com/pppscn/SmsForwarder/releases）**
+- **手机上安装好 “短信转发器” 并启动，下载地址：https://github.com/pppscn/SmsForwarder/releases**
 
 ### **2、配置WinMsgHub（Windows端）**
 
@@ -207,7 +207,9 @@ pythonw main.py
 
 ### **5、实测图**
 
-![](resources\images\展示图11.png)
+![](resources/images/展示图11.png)
+
+**（还可以通过配置 WinMsgHub “弹窗设置” 中的 “智能复制设置” 实现自动提取短信通知中的 “验证码” 至系统剪贴板哦~）**
 
 ------
 

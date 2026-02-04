@@ -254,6 +254,29 @@ class SourceConfigDialog(QDialog):
                 "自动解析邮件内容\n"
                 "无需特殊格式，自动提取主题和正文")
     
+    def _add_format_hint(self, layout, source_name, hint_text):
+        """添加简单的格式提示（用于不需要JSON模板的消息源）"""
+        # 标题
+        title_label = QLabel(f"📋 {source_name} 说明")
+        title_label.setStyleSheet("color: #4A9EFF; font-weight: bold; margin-top: 15px; font-size: 12px;")
+        layout.addRow("", title_label)
+        
+        # 说明文字
+        hint_label = QLabel(hint_text)
+        hint_label.setStyleSheet("""
+            QLabel {
+                color: #B8BFC6;
+                font-size: 11px;
+                padding: 10px;
+                background-color: #2A3139;
+                border-radius: 5px;
+                border-left: 3px solid #4A9EFF;
+                line-height: 1.5;
+            }
+        """)
+        hint_label.setWordWrap(True)
+        layout.addRow("", hint_label)
+    
     def _add_json_template(self, layout, source_type):
         """添加JSON模板和一键复制功能"""
         # 标题

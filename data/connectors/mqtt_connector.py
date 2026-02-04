@@ -50,6 +50,10 @@ class MQTTConnector(MessageConnector):
         self._reconnect_delay = self.INITIAL_RECONNECT_DELAY
         self._should_reconnect = True
         
+        # 消息去重：记录最近处理的消息hash（最多保留100条）
+        self._recent_message_hashes = []
+        self._max_hash_cache = 100
+        
         logger.info("MQTT连接器已初始化")
     
     def connect(self, config: dict) -> bool:
@@ -136,9 +140,8 @@ class MQTTConnector(MessageConnector):
                 time.sleep(0.1)
             
             if self._connected:
-                # 订阅主题（需求1.7：持续监听新消息）
-                self._client.subscribe(topic)
-                logger.info(f"已订阅主题: {topic}")
+                # 主题订阅已在_on_connect回调中完成，这里不需要重复订阅
+                logger.info(f"MQTT连接成功，主题订阅将在_on_connect回调中完成")
                 return True
             else:
                 logger.warning(f"MQTT连接超时（{timeout}秒），将在后台继续尝试连接")
@@ -162,14 +165,24 @@ class MQTTConnector(MessageConnector):
         
         if self._client:
             try:
+                # 先清除所有回调函数，防止在断开过程中触发回调
+                self._client.on_connect = None
+                self._client.on_disconnect = None
+                self._client.on_message = None
+                
+                # 停止网络循环
                 self._client.loop_stop()
+                
+                # 断开连接
                 self._client.disconnect()
+                
                 logger.info("MQTT连接已断开")
             except Exception as e:
                 logger.error(f"断开MQTT连接时出错: {str(e)}")
             finally:
                 self._client = None
                 self._connected = False
+                self._callback = None
     
     def subscribe(self, callback: Callable[[Message], None]) -> None:
         """
@@ -209,7 +222,8 @@ class MQTTConnector(MessageConnector):
             if self._config:
                 topic = self._config.get('topic', 'WinMsgHub/notifications')
                 try:
-                    self._client.subscribe(topic)
+                    # 使用QoS 0，避免消息重复
+                    result = self._client.subscribe(topic, qos=0)
                     logger.info(f"已订阅主题: {topic}")
                 except Exception as e:
                     logger.error(f"订阅主题失败: {e}")
@@ -278,6 +292,21 @@ class MQTTConnector(MessageConnector):
             msg: MQTT消息对象
         """
         try:
+            # 消息去重：计算消息hash（只使用topic和payload，不使用timestamp）
+            import hashlib
+            message_hash = hashlib.md5(f"{msg.topic}:{msg.payload.decode('utf-8', errors='ignore')}".encode()).hexdigest()
+            
+            # 检查是否是重复消息
+            if message_hash in self._recent_message_hashes:
+                logger.debug(f"检测到重复MQTT消息，已跳过 (hash: {message_hash})")
+                return
+            
+            # 添加到缓存
+            self._recent_message_hashes.append(message_hash)
+            # 限制缓存大小
+            if len(self._recent_message_hashes) > self._max_hash_cache:
+                self._recent_message_hashes.pop(0)
+            
             # 打印分隔线
             print("\n" + "="*80)
             print("📨 收到MQTT消息")

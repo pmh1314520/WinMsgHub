@@ -923,22 +923,17 @@ class PopupPage(QWidget):
         animation_layout.addStretch()
         grid.addLayout(animation_layout, 1, 1)
         
-        # 最多同时显示弹窗数量 - 已移除限制
-        # grid.addWidget(QLabel("最多同时显示:"), 2, 0)
-        # max_popups_layout = QHBoxLayout()
-        # self.max_popups_spin = QSpinBox()
-        # self.max_popups_spin.setRange(1, 20)
-        # self.max_popups_spin.setValue(5)
-        # self.max_popups_spin.setSuffix(" 个弹窗")
-        # self.max_popups_spin.setToolTip("同时显示的弹窗数量上限，超过后旧弹窗会自动关闭")
-        # max_popups_layout.addWidget(self.max_popups_spin)
-        # max_popups_layout.addStretch()
-        # grid.addLayout(max_popups_layout, 2, 1)
-        
-        # 创建一个隐藏的max_popups_spin，设置为无限制（999）
+        # 最多同时显示弹窗数量
+        grid.addWidget(QLabel("最多同时显示:"), 2, 0)
+        max_popups_layout = QHBoxLayout()
         self.max_popups_spin = QSpinBox()
-        self.max_popups_spin.setValue(999)  # 设置为很大的数字，相当于无限制
-        self.max_popups_spin.setVisible(False)  # 隐藏控件
+        self.max_popups_spin.setRange(1, 20)
+        self.max_popups_spin.setValue(5)
+        self.max_popups_spin.setSuffix(" 个弹窗")
+        self.max_popups_spin.setToolTip("同时显示的弹窗数量上限，超过后旧弹窗会自动关闭")
+        max_popups_layout.addWidget(self.max_popups_spin)
+        max_popups_layout.addStretch()
+        grid.addLayout(max_popups_layout, 2, 1)
         
         layout.addLayout(grid)
         
@@ -2658,6 +2653,7 @@ class PopupPage(QWidget):
                 copy_mode="auto" if self.copy_auto_radio.isChecked() else "on_click",
                 sound_file=self.selected_sound,
                 sound_volume=self.volume_slider.value(),  # 添加音量参数
+                max_popups=self.max_popups_spin.value(),  # 添加最大弹窗数量参数
                 # 字体配置
                 title_font_size=self.title_font_size.value(),
                 title_color=self.title_color,
@@ -2671,6 +2667,9 @@ class PopupPage(QWidget):
                 # 文本溢出处理
                 title_text_overflow=title_overflow,
                 content_text_overflow=content_overflow,
+                # 最大行数
+                title_max_lines=self.title_max_lines_spin.value(),
+                content_max_lines=self.content_max_lines_spin.value(),
                 # 文本对齐方式
                 title_align=title_align,
                 content_align=content_align,
@@ -2926,6 +2925,7 @@ class PopupPage(QWidget):
         """恢复显示设置默认值"""
         self.duration_spin.setValue(5000)
         self.animation_spin.setValue(300)
+        self.max_popups_spin.setValue(5)  # 恢复最大弹窗数量
         self.auto_copy_check.setChecked(False)
         self.copy_on_click_radio.setChecked(True)
         self.copy_rules_list.clear()

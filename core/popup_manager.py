@@ -40,6 +40,10 @@ class PopupManager:
         """从配置加载样式"""
         popup_config = self.config.get('popup', {})
         
+        # 获取 max_popups 并记录日志
+        max_popups_value = popup_config.get('max_popups', 5)
+        logger.info(f"📖 _load_style: 从配置读取 max_popups = {max_popups_value}")
+        
         # 转换position字符串为枚举
         position_str = popup_config.get('position', 'top_right')
         try:
@@ -71,7 +75,7 @@ class PopupManager:
             auto_copy=popup_config.get('auto_copy', False),
             copy_mode=popup_config.get('copy_mode', 'on_click'),
             copy_rules=popup_config.get('copy_rules', []),
-            max_popups=popup_config.get('max_popups', 5),
+            max_popups=max_popups_value,
             # 字体配置
             title_font_family=popup_config.get('title_font_family', 'Microsoft YaHei UI'),
             title_font_size=popup_config.get('title_font_size', 13),
@@ -105,7 +109,7 @@ class PopupManager:
             time_format=popup_config.get('time_format', '%H:%M:%S')
         )
         
-        logger.info(f"📖 PopupStyle 创建完成，sound_volume = {style.sound_volume}")
+        logger.info(f"📖 PopupStyle 创建完成，max_popups = {style.max_popups}")
         return style
     
     def show_notification(self, message: Message):
@@ -124,23 +128,29 @@ class PopupManager:
             # 每次显示前重新加载样式，确保使用最新配置
             self.style = self._load_style()
             
-            # 检查是否超过最大弹窗数量限制
+            # 获取最大弹窗数量限制
             max_popups = self.style.max_popups
+            logger.info(f"📊 准备显示弹窗: {message.id}, 当前数量: {len(self.active_popups)}, 最大限制: {max_popups}")
+            
+            # 在添加新弹窗之前，检查是否超过限制
+            # 如果当前数量 >= 最大限制，需要先移除旧弹窗腾出空间
             while len(self.active_popups) >= max_popups:
-                # 关闭最旧的弹窗
                 oldest_popup = self.active_popups[0]
-                self.active_popups.remove(oldest_popup)  # 先从列表移除
-                oldest_popup.close()  # 再关闭弹窗
-                logger.debug(f"超过最大弹窗数量({max_popups})，关闭最旧的弹窗")
+                logger.info(f"🚫 PopupManager: 超过最大弹窗数量({max_popups})，移除最旧的弹窗: {oldest_popup.message.id}")
+                self.active_popups.remove(oldest_popup)
             
             # 创建弹窗
             popup = NotificationPopup(message, self.style)
             
-            # 显示弹窗
-            popup.show()
+            # 给弹窗添加 PopupManager 的引用，让 PopupStackManager 可以访问
+            popup._popup_manager_ref = self
             
-            # 添加到活动弹窗列表
+            # 添加到活动弹窗列表（在 show() 之前）
             self.active_popups.append(popup)
+            logger.info(f"➕ 弹窗已添加到列表: {message.id}, 当前数量: {len(self.active_popups)}")
+            
+            # 显示弹窗（PopupStackManager 会在内部处理数量限制）
+            popup.show()
             
             # 设置自动关闭定时器（需求3.4）
             if self.style.display_duration > 0:
@@ -149,7 +159,7 @@ class PopupManager:
             # 当弹窗关闭时从列表中移除
             popup.closed.connect(lambda: self._on_popup_closed(popup))
             
-            logger.info(f"弹窗已显示: {message.id} (当前活动: {len(self.active_popups)}/{max_popups})")
+            logger.info(f"✅ 弹窗已显示: {message.id} (当前活动: {len(self.active_popups)})")
             
         except Exception as e:
             logger.error(f"显示弹窗失败: {e}", exc_info=True)
@@ -158,7 +168,9 @@ class PopupManager:
         """弹窗关闭时的回调"""
         if popup in self.active_popups:
             self.active_popups.remove(popup)
-            logger.debug(f"弹窗已关闭: {popup.message.id}")
+            logger.debug(f"PopupManager: 弹窗已关闭并从列表移除: {popup.message.id}, 剩余: {len(self.active_popups)}")
+        else:
+            logger.debug(f"PopupManager: 弹窗已关闭（已不在列表中）: {popup.message.id}")
     
     def close_all(self):
         """关闭所有活动弹窗"""

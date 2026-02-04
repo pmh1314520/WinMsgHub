@@ -101,7 +101,14 @@ class Logger:
         Returns:
             logging.Logger: 日志记录器实例
         """
-        return logging.getLogger(name)
+        # 如果是子模块，使用WinMsgHub作为父logger
+        if name != 'WinMsgHub' and not name.startswith('WinMsgHub.'):
+            name = f'WinMsgHub.{name}'
+        
+        child_logger = logging.getLogger(name)
+        # 确保子logger不会重复处理（propagate=True会传递给父logger）
+        child_logger.propagate = True
+        return child_logger
     
     def set_level(self, level: str):
         """

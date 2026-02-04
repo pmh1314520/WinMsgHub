@@ -42,8 +42,35 @@ class PopupStackManager:
     
     def add_popup(self, popup: 'NotificationPopup'):
         """添加新弹窗到管理器"""
-        # 注意：最大弹窗数量限制由 PopupManager 处理，这里只负责堆叠管理
+        # 获取最大弹窗数量限制
+        max_popups = popup.style.max_popups
+        
+        # 检查是否超过最大弹窗数量限制
+        # 如果当前数量 >= 最大限制，需要先关闭旧弹窗腾出空间
+        while len(self._popups) >= max_popups:
+            # 关闭最旧的弹窗（列表第一个）
+            oldest_popup = self._popups[0]
+            logger.info(f"🚫 PopupStackManager: 超过最大弹窗数量({max_popups})，关闭最旧的弹窗: {oldest_popup.message.id}")
+            
+            # 先从两个列表中移除
+            self._popups.remove(oldest_popup)
+            
+            # 如果弹窗有关联的 PopupManager，也从那里移除
+            # 注意：这里需要手动触发 PopupManager 的移除逻辑
+            # 因为 close() 是异步的，回调可能还没执行
+            if hasattr(oldest_popup, '_popup_manager_ref'):
+                popup_manager = oldest_popup._popup_manager_ref
+                if popup_manager and oldest_popup in popup_manager.active_popups:
+                    popup_manager.active_popups.remove(oldest_popup)
+                    logger.debug(f"PopupStackManager: 已从 PopupManager 移除: {oldest_popup.message.id}")
+            
+            # 最后关闭弹窗
+            oldest_popup.close()
+        
+        # 添加新弹窗
         self._popups.append(popup)
+        logger.debug(f"➕ PopupStackManager: 弹窗已添加: {popup.message.id}, 当前数量: {len(self._popups)}/{max_popups}")
+        
         # 当有多个弹窗时，需要重新排列旧弹窗
         # 因为新弹窗总是占据固定位置（顶部或底部），旧弹窗需要移动
         if len(self._popups) > 1:

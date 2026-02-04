@@ -15,7 +15,7 @@ class UpdateChecker:
     """更新检查器 - 检查GitHub Release"""
     
     # 当前版本
-    CURRENT_VERSION = "1.1.0"
+    CURRENT_VERSION = "1.1.3"
     
     # GitHub仓库信息
     GITHUB_OWNER = "pmh1314520"
@@ -36,7 +36,7 @@ class UpdateChecker:
             如果有新版本，返回包含更新信息的字典：
             {
                 'has_update': True,
-                'latest_version': '1.1.0',
+                'latest_version': '1.1.3',
                 'current_version': '1.0.0',
                 'release_url': 'https://github.com/...',
                 'release_notes': '更新内容...',

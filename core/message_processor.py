@@ -48,6 +48,13 @@ class MessageProcessor(QObject):
         
         # 连接信号到槽函数（在主线程中执行）
         if self.popup_manager:
+            # 先断开可能存在的旧连接，避免重复连接
+            try:
+                self.message_received.disconnect()
+            except:
+                pass  # 如果没有连接，会抛出异常，忽略即可
+            
+            # 连接信号
             self.message_received.connect(self._show_popup_in_main_thread)
         
         logger.info("消息处理器已初始化")
