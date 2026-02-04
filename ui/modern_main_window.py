@@ -197,7 +197,7 @@ class ModernMainWindow(QMainWindow):
         layout.addStretch()
         
         # 版本信息
-        version_label = QLabel("v1.1.3")
+        version_label = QLabel("v1.1.4")
         version_label.setStyleSheet("""
             QLabel {
                 color: #7F8C8D;

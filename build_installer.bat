@@ -80,7 +80,7 @@ echo �? �?安装包制作成功！                �?
 echo └─────────────────────────────────────�?
 echo.
 echo 📁 输出目录：installer_output\
-echo 📦 安装包文件：WinMsgHub_v1.1.3_Setup.exe
+echo 📦 安装包文件：WinMsgHub_v1.1.4_Setup.exe
 echo 📏 文件大小�?
 dir /b installer_output\*.exe 2>nul | findstr /i "setup.exe" >nul && for %%F in (installer_output\*Setup.exe) do echo    %%~zF 字节
 echo.

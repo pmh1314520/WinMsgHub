@@ -39,6 +39,6 @@ echo 构建完成�?
 echo ========================================
 echo.
 echo 程序文件：dist\WinMsgHub\WinMsgHub.exe
-echo 安装包：installer_output\WinMsgHub_v1.1.3_Setup.exe
+echo 安装包：installer_output\WinMsgHub_v1.1.4_Setup.exe
 echo.
 pause
