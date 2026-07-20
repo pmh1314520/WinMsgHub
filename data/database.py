@@ -46,9 +46,11 @@ class Database(QObject):
             self.db_path = db_path
         
         # 对于内存数据库，保持一个持久连接
+        # check_same_thread=False：内存库只有这一个连接，
+        # 允许测试等场景跨线程使用（文件库每次操作新建连接，天然线程安全）
         self._memory_conn = None
         if self.db_path == ":memory:":
-            self._memory_conn = sqlite3.connect(":memory:")
+            self._memory_conn = sqlite3.connect(":memory:", check_same_thread=False)
         
         # 确保数据库目录存在
         if self.db_path != ":memory:":
@@ -297,6 +299,11 @@ class Database(QObject):
             conn.commit()
             
             logger.info(f"删除了 {deleted_count} 条超过 {days} 天的旧消息")
+            
+            # 有数据被删除时通知UI刷新
+            if deleted_count > 0:
+                self.data_changed.emit()
+            
             return deleted_count
         except sqlite3.Error as e:
             logger.error(f"删除旧消息失败: {e}")

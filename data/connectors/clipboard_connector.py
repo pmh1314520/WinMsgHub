@@ -45,6 +45,9 @@ class ClipboardConnector(MessageConnector):
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._last_content = ""
+        # 最近出现过的内容（用于ignore_duplicates去重）
+        self._recent_contents: dict = {}
+        self._max_recent_contents = 20
         # 创建信号发射器（在主线程中）
         self._signal_emitter = ClipboardSignalEmitter()
     
@@ -112,9 +115,22 @@ class ClipboardConnector(MessageConnector):
                             self._stop_event.wait(poll_interval)
                             continue
                     
+                    # ignore_duplicates: 最近出现过的相同内容不重复提醒
+                    is_recent_duplicate = (
+                        ignore_duplicates and current_content in self._recent_contents
+                    )
+                    
                     # 检查长度
-                    if len(current_content) >= min_length:
+                    if len(current_content) >= min_length and not is_recent_duplicate:
                         self._send_message(current_content, max_length)
+                    elif is_recent_duplicate:
+                        logger.debug("剪贴板内容与最近记录重复，已跳过提醒")
+                    
+                    # 记录到最近内容缓存（dict保持插入顺序）
+                    self._recent_contents[current_content] = True
+                    if len(self._recent_contents) > self._max_recent_contents:
+                        oldest_key = next(iter(self._recent_contents))
+                        del self._recent_contents[oldest_key]
                     
                     self._last_content = current_content
                     
@@ -176,6 +192,13 @@ class ClipboardConnector(MessageConnector):
     
     def subscribe(self, callback: Callable[[Message], None]) -> None:
         """订阅消息 - 连接信号到回调"""
+        # 先断开旧连接，防止subscribe被多次调用时消息重复分发
+        if self.callback is not None:
+            try:
+                self._signal_emitter.message_received.disconnect()
+            except TypeError:
+                pass
+        
         self.callback = callback
         # 将信号连接到回调函数，确保在主线程中执行
         self._signal_emitter.message_received.connect(callback)

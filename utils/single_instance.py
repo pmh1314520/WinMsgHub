@@ -50,9 +50,7 @@ class SingleInstance:
         """
         try:
             if sys.platform == 'win32':
-                # Windows: 使用文件独占打开
-                import msvcrt
-                
+                # Windows: 使用文件独占创建实现锁
                 try:
                     # 尝试以独占模式打开文件
                     self.lock_fd = os.open(

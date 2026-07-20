@@ -483,13 +483,18 @@ class SettingsPage(QWidget):
             if sys.platform == "win32":
                 import winreg
                 
-                # 获取可执行文件路径
+                # 构建启动命令
                 if getattr(sys, 'frozen', False):
-                    # 打包后的exe
-                    exe_path = sys.executable
+                    # 打包后的exe，直接注册exe路径
+                    command = f'"{sys.executable}"'
                 else:
-                    # 开发环境
-                    exe_path = os.path.abspath(sys.argv[0])
+                    # 开发环境：.py文件不能直接作为启动项运行，
+                    # 需要注册为 "pythonw.exe main.py" 形式（pythonw无控制台窗口）
+                    script_path = os.path.abspath(sys.argv[0])
+                    python_dir = os.path.dirname(sys.executable)
+                    pythonw = os.path.join(python_dir, "pythonw.exe")
+                    interpreter = pythonw if os.path.exists(pythonw) else sys.executable
+                    command = f'"{interpreter}" "{script_path}"'
                 
                 # 添加到注册表
                 key = winreg.OpenKey(
@@ -499,10 +504,11 @@ class SettingsPage(QWidget):
                     winreg.KEY_SET_VALUE
                 )
                 
-                winreg.SetValueEx(key, "WinMsgHub", 0, winreg.REG_SZ, f'"{exe_path}"')
+                winreg.SetValueEx(key, "WinMsgHub", 0, winreg.REG_SZ, command)
                 winreg.CloseKey(key)
                 
-                print(f"已添加开机自启动: {exe_path}")
+                from utils.logger import get_logger
+                get_logger(__name__).info(f"已添加开机自启动: {command}")
             else:
                 QMessageBox.warning(
                     self,

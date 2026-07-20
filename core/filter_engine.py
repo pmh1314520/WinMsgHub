@@ -41,6 +41,7 @@ class FilterRule:
         value: 过滤值
         action: 动作（"allow"允许, "block"阻止, "block_but_save"阻止但保存）
         save_to_history: 是否保存到历史记录（当action为block时有效）
+        case_sensitive: 是否区分大小写
     """
     enabled: bool
     field: str
@@ -48,6 +49,60 @@ class FilterRule:
     value: str
     action: str
     save_to_history: bool = False  # 新增字段
+    case_sensitive: bool = False  # 是否区分大小写
+
+
+def rules_from_config(rule_dicts: list) -> List[FilterRule]:
+    """将配置中的规则字典列表转换为FilterRule列表
+    
+    这是页面配置格式与过滤引擎之间的唯一转换入口，
+    main.py 和 filter_page.py 都必须使用它，确保行为一致。
+    
+    Args:
+        rule_dicts: 配置中的规则字典列表
+        
+    Returns:
+        FilterRule列表（仅包含启用的规则）
+    """
+    condition_map = {
+        'contains': FilterCondition.CONTAINS,
+        'not_contains': FilterCondition.NOT_CONTAINS,
+        'source': FilterCondition.EQUALS,
+        'regex': FilterCondition.REGEX
+    }
+    
+    rules: List[FilterRule] = []
+    for rule_data in rule_dicts or []:
+        if not rule_data.get('enabled', True):
+            continue
+        
+        rule_type = rule_data.get('type', 'contains')
+        condition = condition_map.get(rule_type, FilterCondition.CONTAINS)
+        
+        field = rule_data.get('field', 'content')
+        # "来源匹配"类型的规则始终检查source字段
+        if rule_type == 'source':
+            field = 'source'
+        
+        keyword = rule_data.get('keyword', '')
+        action = 'block' if rule_data.get('action_block', True) else 'allow'
+        save_to_history = rule_data.get('action_save', False)
+        case_sensitive = rule_data.get('case_sensitive', False)
+        
+        # "标题和内容"需要展开为两条规则
+        fields = ['title', 'content'] if field == 'both' else [field]
+        for f in fields:
+            rules.append(FilterRule(
+                enabled=True,
+                field=f,
+                condition=condition,
+                value=keyword,
+                action=action,
+                save_to_history=save_to_history,
+                case_sensitive=case_sensitive
+            ))
+    
+    return rules
 
 
 class FilterEngine:
@@ -115,17 +170,27 @@ class FilterEngine:
         """
         # 获取要检查的字段值
         field_value = getattr(message, rule.field, "")
+        if field_value is None:
+            field_value = ""
+        field_value = str(field_value)
+        rule_value = rule.value or ""
+        
+        # 大小写不敏感时统一转为小写比较（正则使用IGNORECASE标志）
+        if not rule.case_sensitive and rule.condition != FilterCondition.REGEX:
+            field_value = field_value.lower()
+            rule_value = rule_value.lower()
         
         # 根据条件类型进行匹配
         if rule.condition == FilterCondition.CONTAINS:
-            return rule.value in field_value
+            return rule_value in field_value
         elif rule.condition == FilterCondition.NOT_CONTAINS:
-            return rule.value not in field_value
+            return rule_value not in field_value
         elif rule.condition == FilterCondition.EQUALS:
-            return rule.value == field_value
+            return rule_value == field_value
         elif rule.condition == FilterCondition.REGEX:
             try:
-                return bool(re.search(rule.value, field_value))
+                flags = 0 if rule.case_sensitive else re.IGNORECASE
+                return bool(re.search(rule.value, field_value, flags))
             except re.error as e:
                 logger.error(f"正则表达式错误: {e}")
                 return False
@@ -147,6 +212,15 @@ class FilterEngine:
         """清空所有规则"""
         self.rules.clear()
         logger.info("已清空所有过滤规则")
+    
+    def set_rules(self, rules: List[FilterRule]):
+        """原子替换所有规则
+        
+        直接整体替换列表引用，避免在消息线程遍历规则时
+        出现"清空后逐条添加"导致的中间状态。
+        """
+        self.rules = list(rules)
+        logger.info(f"过滤规则已更新，共 {len(self.rules)} 条")
     
     def get_rules(self) -> List[FilterRule]:
         """获取所有规则"""

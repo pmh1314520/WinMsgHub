@@ -91,16 +91,22 @@
       {
         "enabled": false,
         "name": "API轮询",
+        "url": "https://api.example.com/messages",
+        "method": "GET",
+        "headers": {
+          "Authorization": "Bearer YOUR_TOKEN"
+        },
+        "poll_interval": 60,
+        "timeout": 30
+      },
+      {
+        "enabled": false,
+        "name": "多端点轮询示例",
         "endpoints": [
-          {
-            "url": "https://api.example.com/messages",
-            "method": "GET",
-            "headers": {
-              "Authorization": "Bearer YOUR_TOKEN"
-            },
-            "poll_interval": 60
-          }
-        ]
+          "https://api.example.com/alerts",
+          "https://api.example.com/notifications"
+        ],
+        "poll_interval": 120
       }
     ],
     "webhook": [

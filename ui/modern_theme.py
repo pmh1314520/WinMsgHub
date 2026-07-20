@@ -49,7 +49,7 @@ class ModernTheme:
     def get_stylesheet() -> str:
         """获取现代化样式表"""
         return f"""
-        # ========== 全局样式 ========== */
+        /* ========== 全局样式 ========== */
         QWidget {{
             font-family: "Microsoft YaHei UI", "Segoe UI", "微软雅黑", Arial, sans-serif;
             font-size: 13px;

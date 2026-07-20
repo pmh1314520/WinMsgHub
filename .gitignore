@@ -33,6 +33,9 @@ env/
 *.swo
 *~
 
+# 所有以.开头的文件夹一律不入库（.vscode/.idea/.pytest_cache/.kiro/.cursor等）
+.*/
+
 # Testing
 .pytest_cache/
 .hypothesis/
@@ -47,6 +50,11 @@ test_*.py
 # Logs
 *.log
 logs/
+
+# 文本文件不入库（更新日志草稿、临时笔记等）
+# requirements.txt 是安装依赖必需文件，明确保留
+*.txt
+!requirements.txt
 
 # OS
 .DS_Store
@@ -100,3 +108,6 @@ Output/
 
 # Conda
 .conda/
+
+# Web文件夹（官网开发）
+Web/

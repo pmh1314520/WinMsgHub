@@ -9,7 +9,7 @@ import time
 import uuid
 import threading
 from typing import Callable, Optional
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from data.connectors.base import MessageConnector
 from data.models import Message
 from utils.logger import get_logger
@@ -24,7 +24,7 @@ class WebhookConnector(MessageConnector):
         self._callback: Optional[Callable[[Message], None]] = None
         self._connected = False
         self._config: Optional[dict] = None
-        self._server: Optional[HTTPServer] = None
+        self._server: Optional[ThreadingHTTPServer] = None
         self._server_thread: Optional[threading.Thread] = None
         logger.info("Webhook连接器已初始化")
     
@@ -40,6 +40,16 @@ class WebhookConnector(MessageConnector):
                 def do_POST(self):
                     """只处理POST请求 - 支持嵌套JSON格式"""
                     try:
+                        # 校验请求路径（如果配置了path）
+                        expected_path = (config.get('path') or '').strip()
+                        if expected_path:
+                            # 统一去掉尾部斜杠再比较，忽略查询串
+                            request_path = self.path.split('?', 1)[0].rstrip('/') or '/'
+                            expected = expected_path.rstrip('/') or '/'
+                            if request_path != expected:
+                                self.send_error(404, f"Not found (expected path: {expected_path})")
+                                return
+                        
                         # 检查Content-Length
                         content_length = int(self.headers.get('Content-Length', 0))
                         if content_length == 0:
@@ -72,13 +82,20 @@ class WebhookConnector(MessageConnector):
                             self.send_error(400, f"Invalid JSON: {e}")
                             return
                         
+                        # 非字典JSON（字符串/数组/数字）：整体作为消息内容
+                        if not isinstance(data, dict):
+                            data = {'title': '新消息', 'content': str(data)}
+                        
                         # 检查是否是嵌套格式（msg字段包含JSON字符串）
                         if 'msg' in data and isinstance(data['msg'], str):
                             try:
                                 # 尝试解析msg字段中的JSON字符串
                                 nested_data = json.loads(data['msg'])
-                                data = nested_data
-                                logger.debug("Webhook检测到嵌套格式，已解析")
+                                if isinstance(nested_data, dict):
+                                    data = nested_data
+                                    logger.debug("Webhook检测到嵌套格式，已解析")
+                                else:
+                                    data = {'title': '新消息', 'content': str(nested_data)}
                             except json.JSONDecodeError:
                                 # 如果msg字段不是JSON，就把它当作content
                                 if 'title' not in data and 'content' not in data:
@@ -132,7 +149,9 @@ class WebhookConnector(MessageConnector):
                     """重定向日志到logger"""
                     logger.debug(f"Webhook: {format % args}")
             
-            self._server = HTTPServer((host, port), WebhookHandler)
+            # 使用多线程HTTP服务器，避免单个慢客户端阻塞所有请求
+            self._server = ThreadingHTTPServer((host, port), WebhookHandler)
+            self._server.daemon_threads = True
             self._server_thread = threading.Thread(
                 target=self._server.serve_forever,
                 daemon=True

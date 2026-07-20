@@ -111,6 +111,7 @@ class HistoryPage(QWidget):
         self.current_page = 0  # 当前页码
         self.is_loading = False  # 是否正在加载
         self.has_more = True  # 是否还有更多数据
+        self._pending_time_filter = None  # 待应用的时间过滤范围(start_ts, end_ts)
         
         # 创建异步数据库访问
         from data.async_database import AsyncDatabase
@@ -400,16 +401,34 @@ class HistoryPage(QWidget):
         self.update_indicator.setText("加载中...")
         self.update_indicator.setStyleSheet("color: #E5C07B; font-size: 12px;")
         
-        # 重置分页状态
+        # 重置分页状态和待应用的时间过滤
         self.current_page = 0
         self.has_more = True
         self.is_loading = False
+        self._pending_time_filter = None
         
         # 异步加载
         self.async_db.get_all_messages_async()
     
     def _on_messages_loaded(self, messages):
         """消息加载完成"""
+        # 如果有待应用的时间过滤，应用后清除
+        pending_filter = getattr(self, '_pending_time_filter', None)
+        if pending_filter:
+            self._pending_time_filter = None
+            start_timestamp, end_timestamp = pending_filter
+            try:
+                self.current_messages = [
+                    msg for msg in messages
+                    if start_timestamp <= msg.timestamp <= end_timestamp
+                ]
+                self._update_table()
+                self.update_indicator.setText(f"过滤完成 ({len(self.current_messages)} 条)")
+                self.update_indicator.setStyleSheet("color: #98C379; font-size: 12px;")
+            except Exception as e:
+                self._on_error(f"过滤失败: {e}")
+            return
+        
         self.current_messages = messages
         self._update_table()
         self.search_input.clear()
@@ -452,37 +471,17 @@ class HistoryPage(QWidget):
         self.update_indicator.setText("过滤中...")
         self.update_indicator.setStyleSheet("color: #E5C07B; font-size: 12px;")
         
-        # 异步加载并过滤
-        def on_loaded(messages):
-            try:
-                start = self.start_date.date().toPyDate()
-                end = self.end_date.date().toPyDate()
-                
-                start_timestamp = datetime.combine(start, datetime.min.time()).timestamp()
-                end_timestamp = datetime.combine(end, datetime.max.time()).timestamp()
-                
-                self.current_messages = [
-                    msg for msg in messages
-                    if start_timestamp <= msg.timestamp <= end_timestamp
-                ]
-                
-                self._update_table()
-                self.update_indicator.setText(f"过滤完成 ({len(self.current_messages)} 条)")
-                self.update_indicator.setStyleSheet("color: #98C379; font-size: 12px;")
-            except Exception as e:
-                self._on_error(f"过滤失败: {e}")
+        # 记录待应用的时间过滤范围，加载完成后在_on_messages_loaded中统一应用。
+        # （此前的做法是临时断开/重连信号并用100ms定时器恢复，
+        # 一旦加载耗时超过100ms过滤就会静默失效，存在竞态条件）
+        start = self.start_date.date().toPyDate()
+        end = self.end_date.date().toPyDate()
+        self._pending_time_filter = (
+            datetime.combine(start, datetime.min.time()).timestamp(),
+            datetime.combine(end, datetime.max.time()).timestamp()
+        )
         
-        # 临时连接信号
-        self.async_db.messages_loaded.disconnect(self._on_messages_loaded)
-        self.async_db.messages_loaded.connect(on_loaded)
         self.async_db.get_all_messages_async()
-        
-        # 恢复原始连接
-        def restore_connection():
-            self.async_db.messages_loaded.disconnect(on_loaded)
-            self.async_db.messages_loaded.connect(self._on_messages_loaded)
-        
-        QTimer.singleShot(100, restore_connection)
     
     def _update_table(self):
         """更新表格显示（分页加载，优化性能）"""

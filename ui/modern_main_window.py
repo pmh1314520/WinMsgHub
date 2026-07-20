@@ -20,15 +20,11 @@ class ModernMainWindow(QMainWindow):
     """现代化主窗口 - 蓝色渐变风格"""
     
     closing = pyqtSignal()
+    quit_requested = pyqtSignal()  # 用户关闭窗口且未启用"最小化到托盘"时请求退出
     reload_connectors_requested = pyqtSignal()  # 新增信号
     
     def __init__(self, config_manager, database, message_processor, popup_manager=None, scheduler_manager=None, local_mqtt_manager=None):
         super().__init__()
-        
-        print("=" * 60)
-        print("[ModernMainWindow] 初始化 - 版本: 2026-02-03-v3")
-        print("[ModernMainWindow] 实时自动保存配置（50ms延迟）")
-        print("=" * 60)
         
         self.config_manager = config_manager
         self.database = database
@@ -36,11 +32,6 @@ class ModernMainWindow(QMainWindow):
         self.popup_manager = popup_manager
         self.scheduler_manager = scheduler_manager
         self.local_mqtt_manager = local_mqtt_manager  # 添加本地MQTT管理器
-        
-        logger.info("=" * 60)
-        logger.info("ModernMainWindow 初始化 - 版本: 2026-02-03-v3")
-        logger.info("实时自动保存配置（50ms延迟）")
-        logger.info("=" * 60)
         
         self._setup_ui()
         self._apply_animations()
@@ -197,7 +188,7 @@ class ModernMainWindow(QMainWindow):
         layout.addStretch()
         
         # 版本信息
-        version_label = QLabel("v1.1.4")
+        version_label = QLabel("v1.2.0")
         version_label.setStyleSheet("""
             QLabel {
                 color: #7F8C8D;
@@ -245,8 +236,7 @@ class ModernMainWindow(QMainWindow):
     
     def _on_nav_button_clicked(self, page_id: str):
         """导航按钮点击事件"""
-        print(f"[导航] 按钮被点击: {page_id}")
-        logger.info(f"[导航] 按钮被点击: {page_id}")
+        logger.debug(f"[导航] 按钮被点击: {page_id}")
         self._switch_page(page_id)
     
     def _create_content_area(self) -> QWidget:
@@ -319,15 +309,12 @@ class ModernMainWindow(QMainWindow):
     
     def _switch_page(self, page_id: str):
         """切换页面"""
-        print(f"[页面切换] _switch_page 被调用，目标页面: {page_id}")
-        logger.info(f"[页面切换] _switch_page 被调用，目标页面: {page_id}")
-        
         try:
             page_map = {
                 "dashboard": 0,
                 "history": 1,
                 "sources": 2,
-                "local_mqtt": 3,  # 新增
+                "local_mqtt": 3,
                 "popup": 4,
                 "scheduler": 5,
                 "filter": 6,
@@ -336,31 +323,17 @@ class ModernMainWindow(QMainWindow):
                 "about": 9,
             }
             
-            print(f"[页面切换] page_map 查找完成")
-            
             if page_id in page_map:
-                print(f"[页面切换] 页面ID有效，开始切换")
-                
                 # 在切换页面前，强制保存当前页面的配置（如果有force_save方法）
                 current_widget = self.pages.currentWidget()
                 current_page_name = current_widget.__class__.__name__ if current_widget else "Unknown"
                 
-                print(f"[页面切换] 当前页面: {current_page_name}")
-                logger.info(f"[页面切换] 当前页面: {current_page_name}")
-                
                 if current_widget and hasattr(current_widget, 'force_save'):
                     try:
-                        print(f"[页面切换] 正在保存 {current_page_name} 的配置...")
-                        logger.info(f"[页面切换] 正在保存 {current_page_name} 的配置...")
                         current_widget.force_save()
-                        print(f"[页面切换] {current_page_name} 配置已保存")
-                        logger.info(f"[页面切换] {current_page_name} 配置已保存")
+                        logger.debug(f"[页面切换] {current_page_name} 配置已保存")
                     except Exception as e:
-                        print(f"[页面切换] 保存配置失败: {e}")
                         logger.error(f"[页面切换] 保存 {current_page_name} 配置失败: {e}", exc_info=True)
-                else:
-                    print(f"[页面切换] {current_page_name} 没有 force_save 方法")
-                    logger.info(f"[页面切换] {current_page_name} 没有 force_save 方法")
                 
                 # 更新按钮状态
                 for btn in self.nav_buttons:
@@ -373,13 +346,10 @@ class ModernMainWindow(QMainWindow):
                 
                 # 直接切换页面（不使用动画）
                 self.pages.setCurrentIndex(page_map[page_id])
-                print(f"[页面切换] 已切换到: {page_id}")
-                logger.info(f"[页面切换] 已切换到: {page_id}")
+                logger.debug(f"[页面切换] 已切换到: {page_id}")
             else:
-                print(f"[页面切换] 未知的页面ID: {page_id}")
                 logger.warning(f"[页面切换] 未知的页面ID: {page_id}")
         except Exception as e:
-            print(f"[页面切换] 发生异常: {e}")
             logger.error(f"[页面切换] 发生异常: {e}", exc_info=True)
     
     def _update_status_bar(self):
@@ -387,8 +357,8 @@ class ModernMainWindow(QMainWindow):
         def update_task():
             """后台任务"""
             try:
-                # 获取消息总数
-                total_messages = len(self.database.get_all_messages())
+                # 获取消息总数（COUNT查询，避免加载全部消息浪费内存）
+                total_messages = self.database.get_message_count()
                 
                 # 获取连接器状态
                 connectors = self.message_processor.get_all_connectors()
@@ -432,24 +402,52 @@ class ModernMainWindow(QMainWindow):
         )
     
     def _apply_animations(self):
-        """应用动画效果"""
-        # 窗口淡入动画
-        self.setWindowOpacity(0)
-        self.show()
+        """应用动画效果
         
-        animation = QPropertyAnimation(self, b"windowOpacity")
-        animation.setDuration(400)
-        animation.setStartValue(0.0)
-        animation.setEndValue(1.0)
-        animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
-        animation.start()
+        注意：这里不能调用show()——是否显示窗口由main.py根据
+        "启动时最小化"配置决定，否则最小化启动时窗口会闪现一下。
+        淡入动画在showEvent中首次显示时播放。
+        """
+        self._first_show_pending = True
+    
+    def showEvent(self, event):
+        """窗口显示事件 - 首次显示时播放淡入动画"""
+        super().showEvent(event)
         
-        # 保存动画引用防止被垃圾回收
-        self._fade_animation = animation
+        if getattr(self, '_first_show_pending', False):
+            self._first_show_pending = False
+            
+            self.setWindowOpacity(0)
+            animation = QPropertyAnimation(self, b"windowOpacity")
+            animation.setDuration(400)
+            animation.setStartValue(0.0)
+            animation.setEndValue(1.0)
+            animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
+            animation.start()
+            
+            # 保存动画引用防止被垃圾回收
+            self._fade_animation = animation
     
     def closeEvent(self, event):
-        """关闭事件"""
-        event.ignore()
-        self.hide()
-        self.closing.emit()
-        logger.info("主窗口已最小化到托盘")
+        """关闭事件
+        
+        根据"关闭窗口时最小化到托盘"设置决定行为：
+        - 启用（默认）：隐藏窗口，程序继续在托盘运行
+        - 禁用：直接退出程序
+        """
+        minimize_to_tray = True
+        try:
+            minimize_to_tray = self.config_manager.get("system.minimize_to_tray", True)
+        except Exception as e:
+            logger.warning(f"读取最小化配置失败，默认最小化到托盘: {e}")
+        
+        if minimize_to_tray:
+            event.ignore()
+            self.hide()
+            self.closing.emit()
+            logger.info("主窗口已最小化到托盘")
+        else:
+            event.ignore()  # 由退出流程统一清理资源后退出
+            self.hide()  # 先隐藏窗口，避免退出清理期间窗口无响应
+            logger.info("未启用最小化到托盘，正在退出应用程序...")
+            self.quit_requested.emit()

@@ -69,6 +69,9 @@ class Logger:
             console_handler = logging.StreamHandler()
             console_handler.setLevel(logging.INFO)
             
+            # 保存处理器引用，set_level时需要同步调整处理器级别
+            self._handlers = [file_handler, console_handler]
+            
             # 日志格式
             formatter = logging.Formatter(
                 '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -126,7 +129,12 @@ class Logger:
         }
         
         if level.upper() in level_map:
-            self.logger.setLevel(level_map[level.upper()])
+            new_level = level_map[level.upper()]
+            self.logger.setLevel(new_level)
+            # 同步调整文件/控制台处理器级别，
+            # 否则处理器停留在INFO，设置DEBUG后调试日志依然不会输出
+            for handler in getattr(self, '_handlers', []):
+                handler.setLevel(new_level)
             self.logger.info(f"日志级别设置为: {level.upper()}")
         else:
             self.logger.warning(f"无效的日志级别: {level}")

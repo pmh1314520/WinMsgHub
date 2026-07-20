@@ -52,18 +52,21 @@ class TestMQTTConnectorConnection:
     
     @patch('data.connectors.mqtt_connector.mqtt.Client')
     def test_connect_with_default_broker(self, mock_client_class):
-        """验证使用默认broker地址连接（需求1.2）"""
+        """验证使用默认broker地址连接（需求1.2）
+        
+        当前实现使用connect_async进行非阻塞连接。
+        """
         # 设置mock
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
         
         connector = MQTTConnector()
         
-        # 模拟连接成功
+        # 模拟连接成功（异步连接发起后标记已连接，跳过等待循环）
         def simulate_connect(*args, **kwargs):
             connector._connected = True
         
-        mock_client.connect.side_effect = simulate_connect
+        mock_client.connect_async.side_effect = simulate_connect
         
         # 连接时不指定broker
         config = {
@@ -72,9 +75,10 @@ class TestMQTTConnectorConnection:
         
         result = connector.connect(config)
         
+        assert result is True
         # 验证使用了默认broker
-        mock_client.connect.assert_called_once()
-        call_args = mock_client.connect.call_args
+        mock_client.connect_async.assert_called_once()
+        call_args = mock_client.connect_async.call_args
         assert call_args[0][0] == MQTTConnector.DEFAULT_BROKER
         assert call_args[0][1] == MQTTConnector.DEFAULT_PORT
     
@@ -91,7 +95,7 @@ class TestMQTTConnectorConnection:
         def simulate_connect(*args, **kwargs):
             connector._connected = True
         
-        mock_client.connect.side_effect = simulate_connect
+        mock_client.connect_async.side_effect = simulate_connect
         
         # 连接时指定自定义broker
         custom_broker = "custom.broker.com"
@@ -104,9 +108,10 @@ class TestMQTTConnectorConnection:
         
         result = connector.connect(config)
         
+        assert result is True
         # 验证使用了自定义broker
-        mock_client.connect.assert_called_once()
-        call_args = mock_client.connect.call_args
+        mock_client.connect_async.assert_called_once()
+        call_args = mock_client.connect_async.call_args
         assert call_args[0][0] == custom_broker
         assert call_args[0][1] == custom_port
     
@@ -123,7 +128,7 @@ class TestMQTTConnectorConnection:
         def simulate_connect(*args, **kwargs):
             connector._connected = True
         
-        mock_client.connect.side_effect = simulate_connect
+        mock_client.connect_async.side_effect = simulate_connect
         
         # 连接时启用TLS
         config = {
@@ -149,7 +154,7 @@ class TestMQTTConnectorConnection:
         def simulate_connect(*args, **kwargs):
             connector._connected = True
         
-        mock_client.connect.side_effect = simulate_connect
+        mock_client.connect_async.side_effect = simulate_connect
         
         # 连接时提供认证信息
         config = {
@@ -165,18 +170,15 @@ class TestMQTTConnectorConnection:
     
     @patch('data.connectors.mqtt_connector.mqtt.Client')
     def test_connect_subscribes_to_topic(self, mock_client_class):
-        """验证连接后订阅主题（需求1.7）"""
+        """验证连接成功后订阅主题（需求1.7）
+        
+        订阅在_on_connect回调中执行（保证断线重连后重新订阅）。
+        """
         # 设置mock
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
         
         connector = MQTTConnector()
-        
-        # 模拟连接成功
-        def simulate_connect(*args, **kwargs):
-            connector._connected = True
-        
-        mock_client.connect.side_effect = simulate_connect
         
         # 连接
         topic = 'test/topic'
@@ -184,10 +186,13 @@ class TestMQTTConnectorConnection:
             'topic': topic
         }
         
-        result = connector.connect(config)
+        connector.connect(config)
         
-        # 验证订阅了主题
-        mock_client.subscribe.assert_called_once_with(topic)
+        # 模拟broker回调"连接成功"
+        connector._on_connect(mock_client, None, None, 0)
+        
+        # 验证订阅了主题（QoS 0避免消息重复）
+        mock_client.subscribe.assert_called_once_with(topic, qos=0)
     
     @patch('data.connectors.mqtt_connector.mqtt.Client')
     def test_connect_starts_loop(self, mock_client_class):
@@ -202,7 +207,7 @@ class TestMQTTConnectorConnection:
         def simulate_connect(*args, **kwargs):
             connector._connected = True
         
-        mock_client.connect.side_effect = simulate_connect
+        mock_client.connect_async.side_effect = simulate_connect
         
         # 连接
         config = {
@@ -216,13 +221,13 @@ class TestMQTTConnectorConnection:
     
     @patch('data.connectors.mqtt_connector.mqtt.Client')
     def test_connect_failure_returns_false(self, mock_client_class):
-        """验证连接失败时返回False（需求1.6）"""
+        """验证连接初始化失败时返回False（需求1.6）"""
         # 设置mock
         mock_client = MagicMock()
         mock_client_class.return_value = mock_client
         
-        # 模拟连接失败
-        mock_client.connect.side_effect = Exception("连接失败")
+        # 模拟连接初始化失败（如地址无法解析）
+        mock_client.connect_async.side_effect = Exception("连接失败")
         
         connector = MQTTConnector()
         
@@ -376,10 +381,35 @@ class TestMQTTConnectorMessageHandling:
 
 
 class TestMQTTConnectorReconnection:
-    """测试MQTT连接器重连机制"""
+    """测试MQTT连接器重连机制
     
-    def test_on_disconnect_triggers_reconnection(self):
-        """验证断开连接时触发重连（需求1.6）"""
+    重连由paho网络线程根据reconnect_delay_set的指数退避配置自动执行，
+    不在回调中手动sleep+reconnect（那样会阻塞网络线程）。
+    """
+    
+    @patch('data.connectors.mqtt_connector.mqtt.Client')
+    def test_connect_configures_auto_reconnect(self, mock_client_class):
+        """验证连接时配置了paho自动重连的指数退避参数（需求1.6）"""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        
+        connector = MQTTConnector()
+        
+        def simulate_connect(*args, **kwargs):
+            connector._connected = True
+        
+        mock_client.connect_async.side_effect = simulate_connect
+        
+        connector.connect({'topic': 'test/topic'})
+        
+        # 验证配置了指数退避自动重连
+        mock_client.reconnect_delay_set.assert_called_once_with(
+            min_delay=MQTTConnector.INITIAL_RECONNECT_DELAY,
+            max_delay=MQTTConnector.MAX_RECONNECT_DELAY
+        )
+    
+    def test_on_disconnect_marks_disconnected(self):
+        """验证意外断开时标记为未连接（等待paho自动重连）"""
         connector = MQTTConnector()
         
         # 设置配置
@@ -389,72 +419,33 @@ class TestMQTTConnectorReconnection:
             'topic': 'test/topic'
         }
         connector._should_reconnect = True
+        connector._connected = True
         
         # 创建mock客户端
         mock_client = MagicMock()
         connector._client = mock_client
         
-        # 模拟意外断开（rc != 0）
-        with patch('time.sleep'):  # 跳过sleep
-            connector._on_disconnect(mock_client, None, 1)
+        # 模拟意外断开（rc != 0），回调不应阻塞也不应抛异常
+        connector._on_disconnect(mock_client, None, 1)
         
-        # 验证尝试重连
-        mock_client.reconnect.assert_called()
+        assert not connector.is_connected()
+        # 不应在回调中手动调用reconnect（paho网络线程自动处理）
+        mock_client.reconnect.assert_not_called()
     
-    def test_reconnect_delay_increases_exponentially(self):
-        """验证重连延迟指数增长"""
+    def test_reconnect_resubscribes_topic(self):
+        """验证重连成功后重新订阅主题（需求1.7）"""
         connector = MQTTConnector()
+        connector._config = {'topic': 'test/topic'}
         
-        # 初始延迟应该是INITIAL_RECONNECT_DELAY
-        assert connector._reconnect_delay == MQTTConnector.INITIAL_RECONNECT_DELAY
-        
-        # 设置配置
-        connector._config = {
-            'broker': 'test.broker.com',
-            'port': 1883,
-            'topic': 'test/topic'
-        }
-        connector._should_reconnect = True
-        
-        # 创建mock客户端
         mock_client = MagicMock()
-        mock_client.reconnect.side_effect = Exception("重连失败")
         connector._client = mock_client
         
-        # 模拟多次断开连接
-        initial_delay = connector._reconnect_delay
+        # 模拟断开后重连成功
+        connector._on_disconnect(mock_client, None, 1)
+        connector._on_connect(mock_client, None, None, 0)
         
-        with patch('time.sleep'):  # 跳过sleep
-            connector._on_disconnect(mock_client, None, 1)
-        
-        # 验证延迟增加
-        assert connector._reconnect_delay == initial_delay * 2
-    
-    def test_reconnect_delay_has_maximum(self):
-        """验证重连延迟有最大值"""
-        connector = MQTTConnector()
-        
-        # 设置一个很大的延迟
-        connector._reconnect_delay = MQTTConnector.MAX_RECONNECT_DELAY * 2
-        
-        # 设置配置
-        connector._config = {
-            'broker': 'test.broker.com',
-            'port': 1883,
-            'topic': 'test/topic'
-        }
-        connector._should_reconnect = True
-        
-        # 创建mock客户端
-        mock_client = MagicMock()
-        mock_client.reconnect.side_effect = Exception("重连失败")
-        connector._client = mock_client
-        
-        with patch('time.sleep'):  # 跳过sleep
-            connector._on_disconnect(mock_client, None, 1)
-        
-        # 验证延迟不超过最大值
-        assert connector._reconnect_delay <= MQTTConnector.MAX_RECONNECT_DELAY
+        assert connector.is_connected()
+        mock_client.subscribe.assert_called_once_with('test/topic', qos=0)
     
     def test_disconnect_prevents_reconnection(self):
         """验证主动断开连接时不触发重连"""
@@ -569,7 +560,7 @@ class TestMQTTConnectorProperties:
         def simulate_connect(*args, **kwargs):
             connector._connected = True
         
-        mock_client.connect.side_effect = simulate_connect
+        mock_client.connect_async.side_effect = simulate_connect
         
         # 构建配置（默认启用TLS）
         config = {
@@ -639,16 +630,23 @@ class TestMQTTConnectorProperties:
         config_dir = tmp_path / "config"
         config_manager = ConfigManager(config_dir)
         
-        # 设置自定义MQTT broker配置
-        config_manager.set('message_sources.mqtt.broker', broker)
-        config_manager.set('message_sources.mqtt.port', port)
+        # 设置自定义MQTT broker配置（多实例列表格式）
+        config_manager.set('message_sources.mqtt', [{
+            'enabled': True,
+            'name': '测试MQTT',
+            'broker': broker,
+            'port': port,
+        }])
         
         # 创建新的配置管理器实例（模拟重启应用）
         config_manager2 = ConfigManager(config_dir)
         
         # 验证往返一致性
-        retrieved_broker = config_manager2.get('message_sources.mqtt.broker')
-        retrieved_port = config_manager2.get('message_sources.mqtt.port')
+        mqtt_sources = config_manager2.get('message_sources.mqtt')
+        assert isinstance(mqtt_sources, list) and len(mqtt_sources) == 1
+        
+        retrieved_broker = mqtt_sources[0]['broker']
+        retrieved_port = mqtt_sources[0]['port']
         
         assert retrieved_broker == broker, \
             f"Broker地址往返不一致: 期望 {broker}, 实际 {retrieved_broker}"
@@ -681,7 +679,7 @@ class TestMQTTConnectorProperties:
         def simulate_connect(*args, **kwargs):
             connector._connected = True
         
-        mock_client.connect.side_effect = simulate_connect
+        mock_client.connect_async.side_effect = simulate_connect
         
         # 构建配置
         config = {
@@ -706,7 +704,7 @@ class TestMQTTConnectorProperties:
         except Exception:
             # 连接可能失败，但TLS配置逻辑应该正确执行
             if use_tls:
-                assert mock_client.tls_set_context.called or not mock_client.connect.called
+                assert mock_client.tls_set_context.called or not mock_client.connect_async.called
             else:
                 mock_client.tls_set_context.assert_not_called()
     
@@ -744,26 +742,26 @@ class TestMQTTConnectorProperties:
         config_dir = tmp_path / "config"
         config_manager = ConfigManager(config_dir)
         
-        # 设置完整的MQTT配置
-        config_manager.set('message_sources.mqtt.broker', broker)
-        config_manager.set('message_sources.mqtt.port', port)
-        config_manager.set('message_sources.mqtt.username', username)
-        config_manager.set('message_sources.mqtt.password', password)
-        config_manager.set('message_sources.mqtt.topic', topic)
-        config_manager.set('message_sources.mqtt.use_tls', use_tls)
-        config_manager.set('message_sources.mqtt.enabled', enabled)
+        # 设置完整的MQTT配置（多实例列表格式）
+        mqtt_config = {
+            'enabled': enabled,
+            'name': '完整配置测试',
+            'broker': broker,
+            'port': port,
+            'username': username,
+            'password': password,
+            'topic': topic,
+            'use_tls': use_tls,
+        }
+        config_manager.set('message_sources.mqtt', [mqtt_config])
         
         # 创建新的配置管理器实例（模拟重启应用）
         config_manager2 = ConfigManager(config_dir)
         
         # 验证所有字段的往返一致性
-        assert config_manager2.get('message_sources.mqtt.broker') == broker
-        assert config_manager2.get('message_sources.mqtt.port') == port
-        assert config_manager2.get('message_sources.mqtt.username') == username
-        assert config_manager2.get('message_sources.mqtt.password') == password
-        assert config_manager2.get('message_sources.mqtt.topic') == topic
-        assert config_manager2.get('message_sources.mqtt.use_tls') == use_tls
-        assert config_manager2.get('message_sources.mqtt.enabled') == enabled
+        loaded = config_manager2.get('message_sources.mqtt')
+        assert isinstance(loaded, list) and len(loaded) == 1
+        assert loaded[0] == mqtt_config
     
     # Feature: WinMsgHub-desktop-app, Property 1 (边缘情况): 默认broker使用TLS
     @given(
@@ -791,7 +789,7 @@ class TestMQTTConnectorProperties:
         def simulate_connect(*args, **kwargs):
             connector._connected = True
         
-        mock_client.connect.side_effect = simulate_connect
+        mock_client.connect_async.side_effect = simulate_connect
         
         # 使用最小配置（不指定broker，使用默认值）
         config = {
@@ -802,7 +800,7 @@ class TestMQTTConnectorProperties:
             result = connector.connect(config)
             
             # 验证使用了默认broker
-            call_args = mock_client.connect.call_args
+            call_args = mock_client.connect_async.call_args
             if call_args:
                 assert call_args[0][0] == MQTTConnector.DEFAULT_BROKER
                 assert call_args[0][1] == MQTTConnector.DEFAULT_PORT
@@ -812,5 +810,5 @@ class TestMQTTConnectorProperties:
             
         except Exception:
             # 即使连接失败，TLS配置也应该被调用
-            if mock_client.connect.called:
+            if mock_client.connect_async.called:
                 mock_client.tls_set_context.assert_called()

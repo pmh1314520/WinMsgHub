@@ -28,12 +28,14 @@ class WebSocketConnector(MessageConnector):
     """
     
     def __init__(self):
-        self.ws: Optional[websocket.WebSocketApp] = None
+        self.ws: Optional[WebSocketApp] = None
         self.callback: Optional[Callable[[Message], None]] = None
         self.config: dict = {}
         self._connected = False
         self._thread: Optional[threading.Thread] = None
         self._should_reconnect = True
+        # 可中断的重连等待事件（disconnect时立即唤醒，避免线程卡在sleep中）
+        self._stop_event = threading.Event()
     
     def connect(self, config: dict) -> bool:
         """建立WebSocket连接
@@ -48,6 +50,7 @@ class WebSocketConnector(MessageConnector):
         """
         try:
             self.config = config
+            self._stop_event.clear()
             url = config.get('url', '')
             headers = config.get('headers', {})
             ping_interval = config.get('ping_interval', 30)
@@ -57,6 +60,13 @@ class WebSocketConnector(MessageConnector):
             if not url:
                 logger.error("WebSocket URL未配置")
                 return False
+            
+            # websocket-client要求 ping_timeout < ping_interval，否则直接抛异常
+            if ping_interval > 0 and ping_timeout >= ping_interval:
+                ping_timeout = max(1, ping_interval - 1)
+                logger.warning(
+                    f"心跳超时必须小于心跳间隔，已自动调整为 {ping_timeout} 秒"
+                )
             
             # 创建WebSocket应用
             self.ws = WebSocketApp(
@@ -85,8 +95,15 @@ class WebSocketConnector(MessageConnector):
             if self._connected:
                 logger.info(f"WebSocket已连接: {url}")
                 return True
+            elif self._should_reconnect:
+                # 启用了自动重连：后台线程会持续尝试，返回True让连接器被正常管理，
+                # 否则重连线程会成为无法停止的"僵尸线程"
+                logger.warning(f"WebSocket连接超时（{timeout}秒），将在后台继续尝试连接: {url}")
+                return True
             else:
+                # 未启用自动重连：彻底停止线程后返回失败
                 logger.error("WebSocket连接超时")
+                self.disconnect()
                 return False
                 
         except Exception as e:
@@ -95,7 +112,7 @@ class WebSocketConnector(MessageConnector):
     
     def _run_forever(self, ping_interval: int, ping_timeout: int):
         """在循环中运行WebSocket，支持自动重连"""
-        while self._should_reconnect:
+        while self._should_reconnect and not self._stop_event.is_set():
             try:
                 self.ws.run_forever(
                     ping_interval=ping_interval,
@@ -104,9 +121,10 @@ class WebSocketConnector(MessageConnector):
             except Exception as e:
                 logger.error(f"WebSocket运行错误: {e}")
             
-            if self._should_reconnect:
+            if self._should_reconnect and not self._stop_event.is_set():
                 logger.info("WebSocket断开，5秒后重连...")
-                time.sleep(5)
+                # 使用Event等待，disconnect时可以立即中断
+                self._stop_event.wait(5)
     
     def _on_open(self, ws):
         """WebSocket连接打开回调"""
@@ -125,20 +143,27 @@ class WebSocketConnector(MessageConnector):
             if not self.callback:
                 return
             
-            # 解析JSON
+            # 解析JSON（非JSON文本作为纯文本消息处理）
             try:
                 data = json.loads(message)
-            except json.JSONDecodeError as e:
-                logger.error(f"WebSocket消息不是有效的JSON格式，跳过: {e}")
-                return
+            except json.JSONDecodeError:
+                logger.debug("WebSocket消息不是JSON格式，作为纯文本处理")
+                data = {'title': '新消息', 'content': str(message)}
+            
+            # 非字典JSON（字符串/数组/数字）：整体作为消息内容
+            if not isinstance(data, dict):
+                data = {'title': '新消息', 'content': str(data)}
             
             # 检查是否是嵌套格式（msg字段包含JSON字符串）
             if 'msg' in data and isinstance(data['msg'], str):
                 try:
                     # 尝试解析msg字段中的JSON字符串
                     nested_data = json.loads(data['msg'])
-                    data = nested_data
-                    logger.debug("WebSocket检测到嵌套格式，已解析")
+                    if isinstance(nested_data, dict):
+                        data = nested_data
+                        logger.debug("WebSocket检测到嵌套格式，已解析")
+                    else:
+                        data = {'title': '新消息', 'content': str(nested_data)}
                 except json.JSONDecodeError:
                     # 如果msg字段不是JSON，就把它当作content
                     if 'title' not in data and 'content' not in data:
@@ -185,6 +210,7 @@ class WebSocketConnector(MessageConnector):
         """断开WebSocket连接"""
         try:
             self._should_reconnect = False
+            self._stop_event.set()  # 唤醒可能在等待重连的线程
             if self.ws:
                 self.ws.close()
             

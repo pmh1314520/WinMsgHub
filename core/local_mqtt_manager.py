@@ -28,6 +28,7 @@ class LocalMQTTManager:
         self._is_running = False
         self._port = 1883
         self._ws_port = 8083
+        self._last_error = ""  # 最近一次启动失败的原因
         
         logger.info("本地MQTT管理器已初始化（使用amqtt）")
     
@@ -48,6 +49,14 @@ class LocalMQTTManager:
         except Exception as e:
             logger.error(f"Broker线程异常: {e}", exc_info=True)
             self._is_running = False
+            self._last_error = str(e)
+        finally:
+            # 关闭事件循环，避免资源泄漏（尤其是多次启动/停止服务时）
+            try:
+                if self.loop and not self.loop.is_closed():
+                    self.loop.close()
+            except Exception as e:
+                logger.debug(f"关闭事件循环时出现异常: {e}")
     
     async def _start_broker(self, port: int, ws_port: int):
         """启动MQTT Broker
@@ -99,6 +108,7 @@ class LocalMQTTManager:
         except Exception as e:
             logger.error(f"启动Broker失败: {e}", exc_info=True)
             self._is_running = False
+            self._last_error = str(e)
             raise
     
     def start_service(self, port: int = 1883, ws_port: int = 8083) -> tuple:
@@ -120,6 +130,7 @@ class LocalMQTTManager:
             
             self._port = port
             self._ws_port = ws_port
+            self._last_error = ""
             
             # 在独立线程中启动Broker
             self.broker_thread = threading.Thread(
@@ -136,11 +147,21 @@ class LocalMQTTManager:
                 time.sleep(0.1)
                 if self._is_running:
                     logger.info("MQTT服务启动成功")
-                    # 保存启动状态到配置
-                    self.config_manager.set("local_mqtt.auto_start", True)
+                    # 保存端口到配置（auto_start是用户偏好，由界面复选框单独控制，
+                    # 不应在这里强行改写）
                     self.config_manager.set("local_mqtt.port", port)
                     self.config_manager.set("local_mqtt.ws_port", ws_port)
                     return True, "服务启动成功"
+                # 启动线程已报错，无需继续等待
+                if self._last_error:
+                    break
+            
+            if self._last_error:
+                error_msg = self._last_error
+                if "10048" in error_msg or "address already in use" in error_msg.lower():
+                    error_msg = f"端口被占用（TCP {port} 或 WS {ws_port}），请更换端口或关闭占用程序。原始错误: {error_msg}"
+                logger.error(f"MQTT服务启动失败: {error_msg}")
+                return False, error_msg
             
             logger.error("MQTT服务启动超时")
             return False, "服务启动超时"
@@ -196,8 +217,9 @@ class LocalMQTTManager:
             
             logger.info("MQTT服务已完全停止")
             
-            # 保存停止状态到配置（用户手动停止）
-            self.config_manager.set("local_mqtt.auto_start", False)
+            # 注意：不在这里改写 local_mqtt.auto_start ——
+            # 该配置是"下次启动软件时自动启动服务"的用户偏好，
+            # 由界面上的复选框独立控制，与本次启停操作无关。
             
             return True, "服务已停止"
             

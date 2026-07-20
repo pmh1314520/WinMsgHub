@@ -242,12 +242,12 @@ class AboutPage(QWidget):
         # 特性列表 - 使用网格布局
         features = [
             ("network", "多消息源支持", "MQTT、API、Webhook、IMAP\nWebSocket、RSS、文件监控、剪贴板"),
-            ("ui", "现代化界面", "深色主题、流畅动画\n响应式设计"),
-            ("popup", "智能弹窗系统", "9种位置、5种动画\n自定义样式、音效提醒"),
+            ("palette", "现代化界面", "深色主题、流畅动画\n响应式设计"),
+            ("bell", "智能弹窗系统", "9种位置、3种动画\n自定义样式、音效提醒"),
             ("filter", "强大过滤引擎", "关键词过滤、正则匹配\n优先级控制、黑白名单"),
             ("chart", "历史记录管理", "搜索、筛选、导出\n自动清理、数据统计"),
             ("settings", "灵活配置系统", "实时保存、热重载\n导入导出、备份恢复"),
-            ("security", "安全加密连接", "TLS/SSL 支持\n密码加密存储"),
+            ("security", "安全加密连接", "TLS/SSL 支持\n服务器证书校验"),
             ("performance", "高性能架构", "PyQt6 框架\n多线程处理、异步IO"),
             ("schedule", "定时任务功能", "定时弹窗、番茄钟\n间隔提醒、周期任务"),
             ("tray", "系统托盘集成", "后台运行、快速访问\n实时统计、一键操作"),
@@ -442,7 +442,7 @@ class AboutPage(QWidget):
         # 标题
         title_layout = QHBoxLayout()
         icon_label = QLabel()
-        icon_label.setPixmap(SvgIcon.get_pixmap("links", "#4A9EFF", 24))
+        icon_label.setPixmap(SvgIcon.get_pixmap("globe", "#4A9EFF", 24))
         title_layout.addWidget(icon_label)
         
         title = QLabel("相关链接")

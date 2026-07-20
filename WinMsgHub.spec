@@ -26,6 +26,7 @@ hiddenimports = [
     'PyQt6.QtGui',
     'PyQt6.QtWidgets',
     'PyQt6.QtSvg',
+    'pygame',  # 弹窗音效播放（sound_manager中延迟导入）
     'paho.mqtt.client',
     # amqtt的依赖库
     'passlib',
@@ -85,6 +86,11 @@ a = Analysis(
         'scipy',
         'PIL',
         'tkinter',
+        # 本机可能同时安装了PySide6，项目只用PyQt6，
+        # 必须排除以免两套Qt绑定被同时打包（体积翻倍且DLL冲突）
+        'PySide6',
+        'shiboken6',
+        'PyQt5',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

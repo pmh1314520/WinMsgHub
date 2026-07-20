@@ -505,69 +505,24 @@ class FilterPage(QWidget):
             logger.error(f"[过滤规则] 强制保存规则失败: {e}", exc_info=True)
     
     def _reload_filter_engine(self):
-        """重新加载过滤引擎"""
+        """重新加载过滤引擎
+        
+        使用与main.py一致的统一转换入口rules_from_config，
+        并通过set_rules原子替换规则列表，避免消息线程遍历规则时
+        出现"清空后逐条添加"的中间状态。
+        """
         try:
-            from core.filter_engine import FilterRule, FilterCondition
+            from core.filter_engine import rules_from_config
+            from utils.logger import get_logger
+            logger = get_logger(__name__)
             
-            # 清空现有规则
             if hasattr(self.message_processor, 'filter_engine'):
-                self.message_processor.filter_engine.rules.clear()
-                
-                # 重新加载规则
-                for rule_data in self.rules:
-                    if not rule_data.get('enabled', True):
-                        continue
-                    
-                    # 转换规则类型
-                    rule_type = rule_data.get('type', 'contains')
-                    condition_map = {
-                        'contains': FilterCondition.CONTAINS,
-                        'not_contains': FilterCondition.NOT_CONTAINS,
-                        'source': FilterCondition.EQUALS,
-                        'regex': FilterCondition.REGEX
-                    }
-                    condition = condition_map.get(rule_type, FilterCondition.CONTAINS)
-                    
-                    # 确定要检查的字段
-                    field = rule_data.get('field', 'content')
-                    
-                    # 获取save_to_history设置
-                    save_to_history = rule_data.get('action_save', False)
-                    
-                    if field == 'both':
-                        # 如果是"标题和内容"，需要创建两条规则
-                        self.message_processor.filter_engine.add_rule(FilterRule(
-                            enabled=True,
-                            field='title',
-                            condition=condition,
-                            value=rule_data.get('keyword', ''),
-                            action='block' if rule_data.get('action_block', True) else 'allow',
-                            save_to_history=save_to_history
-                        ))
-                        self.message_processor.filter_engine.add_rule(FilterRule(
-                            enabled=True,
-                            field='content',
-                            condition=condition,
-                            value=rule_data.get('keyword', ''),
-                            action='block' if rule_data.get('action_block', True) else 'allow',
-                            save_to_history=save_to_history
-                        ))
-                    else:
-                        self.message_processor.filter_engine.add_rule(FilterRule(
-                            enabled=True,
-                            field=field,
-                            condition=condition,
-                            value=rule_data.get('keyword', ''),
-                            action='block' if rule_data.get('action_block', True) else 'allow',
-                            save_to_history=save_to_history
-                        ))
-                
-                logger = __import__('utils.logger', fromlist=['get_logger']).get_logger(__name__)
-                logger.info(f"过滤引擎已重新加载，共 {len(self.message_processor.filter_engine.rules)} 条规则")
+                new_rules = rules_from_config(self.rules)
+                self.message_processor.filter_engine.set_rules(new_rules)
+                logger.info(f"过滤引擎已重新加载，共 {len(new_rules)} 条规则")
         except Exception as e:
-            import traceback
-            print(f"重载过滤引擎失败: {e}")
-            print(traceback.format_exc())
+            from utils.logger import get_logger
+            get_logger(__name__).error(f"重载过滤引擎失败: {e}", exc_info=True)
     
     def _test_rules(self):
         """测试规则"""
@@ -617,6 +572,12 @@ class FilterPage(QWidget):
         layout.addWidget(result_text)
         
         def run_test():
+            """使用真实的过滤引擎逐条测试规则，保证测试结果与实际行为完全一致
+            （支持包含/排除/来源/正则四种类型及大小写敏感设置）"""
+            import time as _time
+            from core.filter_engine import FilterEngine, rules_from_config
+            from data.models import Message
+            
             title = title_input.text()
             content = content_input.toPlainText()
             source = source_input.text()
@@ -625,40 +586,52 @@ class FilterPage(QWidget):
                 result_text.setPlainText("请至少输入标题或内容")
                 return
             
+            test_message = Message(
+                id="filter_test",
+                source=source,
+                title=title,
+                content=content,
+                timestamp=_time.time(),
+                metadata={}
+            )
+            
             matched_rules = []
-            for rule in self.rules:
-                if not rule.get("enabled", True):
+            blocked = False
+            saved_to_history = True
+            
+            for rule_data in self.rules:
+                if not rule_data.get("enabled", True):
                     continue
                 
-                keyword = rule.get("keyword", "")
-                field = rule.get("field", "content")
-                case_sensitive = rule.get("case_sensitive", False)
+                # 每条规则单独构建引擎测试是否匹配
+                engine_rules = rules_from_config([rule_data])
+                if not engine_rules:
+                    continue
                 
-                # 简单的匹配逻辑
-                text_to_check = ""
-                if field == "title":
-                    text_to_check = title
-                elif field == "content":
-                    text_to_check = content
-                elif field == "both":
-                    text_to_check = title + " " + content
-                elif field == "source":
-                    text_to_check = source
-                
-                if not case_sensitive:
-                    text_to_check = text_to_check.lower()
-                    keyword = keyword.lower()
-                
-                if keyword in text_to_check:
-                    matched_rules.append(rule.get("name", "未命名"))
-            
-            if matched_rules:
-                result_text.setPlainText(
-                    f"匹配到 {len(matched_rules)} 条规则:\n\n" +
-                    "\n".join(f"• {name}" for name in matched_rules)
+                single_engine = FilterEngine(engine_rules)
+                matched = any(
+                    single_engine._match_rule(test_message, r) for r in engine_rules
                 )
+                if matched:
+                    matched_rules.append(rule_data.get("name", "未命名"))
+            
+            # 用完整规则集判断最终处理结果
+            full_engine = FilterEngine(rules_from_config(self.rules))
+            should_show, should_save = full_engine.should_process(test_message)
+            
+            lines = []
+            if matched_rules:
+                lines.append(f"匹配到 {len(matched_rules)} 条规则:")
+                lines.extend(f"• {name}" for name in matched_rules)
+                lines.append("")
             else:
-                result_text.setPlainText("没有匹配到任何规则，消息将正常显示")
+                lines.append("没有匹配到任何规则")
+                lines.append("")
+            
+            lines.append(f"最终结果: {'显示弹窗' if should_show else '拦截弹窗'}"
+                         f"，{'保存' if should_save else '不保存'}到历史记录")
+            
+            result_text.setPlainText("\n".join(lines))
         
         test_btn.clicked.connect(run_test)
         

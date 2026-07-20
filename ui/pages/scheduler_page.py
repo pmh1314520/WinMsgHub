@@ -34,6 +34,15 @@ class SchedulerPage(QWidget):
         # 监听scheduler_manager的任务变化（如果有信号的话）
         # 否则只在用户操作时刷新，不使用定时器轮询
         # 定时器只用于更新番茄钟状态，不刷新任务列表
+        
+        # 如果番茄钟状态是从上次会话恢复的运行中状态，
+        # 需要启动状态刷新定时器，否则界面永远显示"未运行"
+        try:
+            if self.scheduler_manager.pomodoro_state.get("is_running", False):
+                self.pomodoro_update_timer.start(2000)
+                self._update_pomodoro_status()
+        except Exception:
+            pass
     
     def _setup_ui(self):
         """设置UI"""
@@ -307,12 +316,15 @@ class SchedulerPage(QWidget):
         # 获取所有任务
         tasks = self.scheduler_manager.get_all_tasks()
         
-        # 检查任务是否真的变化了
-        if hasattr(self, '_cached_tasks') and self._tasks_equal(tasks, self._cached_tasks):
+        # 用字典快照做变化检测。
+        # 注意：不能缓存任务对象引用——任务被原地修改时（如run_count自增），
+        # 缓存和现值是同一个对象，比较永远相等，表格就不会刷新
+        snapshot = [task.to_dict() for task in tasks]
+        if getattr(self, '_cached_tasks', None) == snapshot:
             return  # 任务没变化，不刷新
         
         # 更新缓存
-        self._cached_tasks = tasks.copy()
+        self._cached_tasks = snapshot
         
         # 暂停更新避免频繁重绘
         self.task_table.setUpdatesEnabled(False)
@@ -323,18 +335,6 @@ class SchedulerPage(QWidget):
                 self._add_task_to_table(task)
         finally:
             self.task_table.setUpdatesEnabled(True)
-    
-    def _tasks_equal(self, tasks1, tasks2):
-        """比较两个任务列表是否相同"""
-        if len(tasks1) != len(tasks2):
-            return False
-        
-        for t1, t2 in zip(tasks1, tasks2):
-            if (t1.id != t2.id or t1.name != t2.name or 
-                t1.enabled != t2.enabled or t1.run_count != t2.run_count):
-                return False
-        
-        return True
     
     def _refresh_tasks(self):
         """刷新任务列表（仅在任务变化时）"""
@@ -718,6 +718,10 @@ class TaskEditDialog(QDialog):
         
         sound_file = self.sound_input.text().strip()
         
+        # 编辑已有任务时保留其启用状态，新任务默认启用
+        # （此前编辑任务会把禁用中的任务强制重新启用）
+        enabled = self.task.enabled if self.task else True
+        
         task = ScheduledTask(
             task_id=task_id,
             name=name,
@@ -726,7 +730,7 @@ class TaskEditDialog(QDialog):
             task_type=task_type,
             interval=interval,
             time_of_day=time_of_day,
-            enabled=True,
+            enabled=enabled,
             sound_file=sound_file,
             days_of_week=days_of_week
         )

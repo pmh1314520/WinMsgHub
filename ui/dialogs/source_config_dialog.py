@@ -464,14 +464,26 @@ class SourceConfigDialog(QDialog):
         for key, widget in self.fields.items():
             if key in self.source_config:
                 value = self.source_config[key]
-                if isinstance(widget, QCheckBox):
-                    widget.setChecked(value)
-                elif isinstance(widget, QSpinBox):
-                    widget.setValue(value)
-                elif isinstance(widget, QLineEdit):
-                    widget.setText(str(value))
-                elif isinstance(widget, QComboBox):
-                    widget.setCurrentText(str(value))
+                try:
+                    if isinstance(widget, QCheckBox):
+                        widget.setChecked(bool(value))
+                    elif isinstance(widget, QSpinBox):
+                        # 兼容JSON中的字符串/浮点数字
+                        widget.setValue(int(float(value)))
+                    elif isinstance(widget, QLineEdit):
+                        # 列表字段（如file_patterns）用逗号拼接显示，
+                        # 而不是显示成"['*.log', '*.txt']"
+                        if isinstance(value, list):
+                            widget.setText(", ".join(str(v) for v in value))
+                        elif value is None:
+                            widget.setText("")
+                        else:
+                            widget.setText(str(value))
+                    elif isinstance(widget, QComboBox):
+                        widget.setCurrentText(str(value))
+                except (TypeError, ValueError) as e:
+                    # 单个字段值异常不应阻止其余字段加载
+                    print(f"加载配置字段 {key} 失败: {e}")
     
     def get_config(self):
         """获取配置"""

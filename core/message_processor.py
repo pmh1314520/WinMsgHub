@@ -79,82 +79,46 @@ class MessageProcessor(QObject):
             message: 接收到的消息
         """
         try:
-            print("\n" + "🔄 " + "="*78)
-            print("消息处理器收到消息")
-            print("="*80)
-            print(f"📌 ID: {message.id}")
-            print(f"📍 来源: {message.source}")
-            print(f"📝 标题: {message.title}")
-            print(f"📄 内容: {message.content}")
-            print(f"⏰ 时间戳: {message.timestamp}")
-            
-            logger.debug(f"收到消息: {message.id} from {message.source}")
+            logger.info(f"收到消息: id={message.id}, 来源={message.source}, 标题={message.title}")
             
             # 1. 验证消息完整性（需求2.2）
-            print("\n🔍 验证消息...")
             if not self._validate_message(message):
-                print("❌ 消息验证失败！")
                 logger.warning(f"消息验证失败: {message.id}")
-                print("="*80 + "\n")
                 return
-            print("✅ 消息验证通过")
             
             # 2. 应用过滤规则（需求2.4）
-            print("\n🔍 检查过滤规则...")
             should_show, should_save = self.filter_engine.should_process(message)
             
             if not should_show:
-                print("🚫 消息被过滤规则拦截")
-                logger.debug(f"消息被过滤: {message.id}")
+                logger.info(f"消息被过滤规则拦截: {message.id}"
+                            f"（{'仍保存' if should_save else '不保存'}到历史记录）")
                 
                 # 检查是否仍然保存到历史记录
                 if should_save:
-                    print("💾 但仍然保存到历史记录")
-                    # 保存到数据库
-                    print("\n💾 保存到数据库...")
                     self.database.save_message(message)
-                    print("✅ 已保存到数据库")
-                else:
-                    print("❌ 不保存到历史记录")
-                
-                print("="*80 + "\n")
                 return
             
-            print("✅ 通过过滤规则")
-            
             # 3. 保存到数据库（需求2.3）
-            print("\n💾 保存到数据库...")
             try:
                 self.database.save_message(message)
-                print("✅ 已保存到数据库")
                 logger.debug(f"消息已保存: {message.id}")
             except Exception as e:
-                print(f"❌ 保存失败: {e}")
                 logger.error(f"保存消息失败: {e}", exc_info=True)
                 # 继续处理，即使保存失败
             
             # 4. 触发弹窗显示（使用信号发送到主线程）
-            print("\n🔔 准备显示弹窗...")
             if self.popup_manager:
                 try:
                     # 发送信号，让主线程处理弹窗显示
                     self.message_received.emit(message)
-                    print("✅ 已发送弹窗信号到主线程")
                 except Exception as e:
-                    print(f"❌ 发送信号失败: {e}")
                     logger.error(f"发送消息信号失败: {e}", exc_info=True)
             else:
-                print("⚠️  没有弹窗管理器")
-            
-            print("="*80 + "\n")
+                logger.warning("没有弹窗管理器，消息不会弹窗显示")
             
         except Exception as e:
             # 需求2.5：处理解析失败
-            print(f"\n❌ 处理消息时出错: {e}")
-            import traceback
-            traceback.print_exc()
             logger.error(f"处理消息时出错: {e}", exc_info=True)
-            print("="*80 + "\n")
     
     def _validate_message(self, message: Message) -> bool:
         """

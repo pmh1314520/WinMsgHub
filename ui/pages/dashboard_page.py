@@ -661,11 +661,10 @@ class DashboardPage(QWidget):
     def _test_popup(self):
         """测试弹窗"""
         from data.models import Message
-        from ui.notification_popup import NotificationPopup, PopupStyle, PopupPosition
         import time
         
         message = Message(
-            id="test",
+            id=f"test_{int(time.time())}",
             source="测试",
             title="测试弹窗",
             content="这是一条测试消息，用于验证弹窗功能。",
@@ -673,14 +672,19 @@ class DashboardPage(QWidget):
             metadata={}
         )
         
-        style = PopupStyle(
-            position=PopupPosition.TOP_RIGHT,
-            display_duration=5000
-        )
-        
-        popup = NotificationPopup(message, style)
-        popup.show()
-        popup.set_auto_close(5000)
+        # 优先通过弹窗管理器显示，让用户配置的样式/位置/音效全部生效
+        popup_manager = getattr(self.message_processor, 'popup_manager', None)
+        if popup_manager:
+            popup_manager.show_notification(message)
+        else:
+            from ui.notification_popup import NotificationPopup, PopupStyle, PopupPosition
+            style = PopupStyle(
+                position=PopupPosition.TOP_RIGHT,
+                display_duration=5000
+            )
+            popup = NotificationPopup(message, style)
+            popup.show()
+            popup.set_auto_close(5000)
     
     def _clear_history(self):
         """清空历史"""
@@ -694,9 +698,9 @@ class DashboardPage(QWidget):
         
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                # 清空数据库
-                for msg in self.database.get_all_messages():
-                    self.database.delete_message(msg.id)
+                # 单条SQL批量清空，避免逐条删除时每条都触发
+                # data_changed信号导致的UI风暴和性能问题
+                self.database.clear_all_messages()
                 self._refresh_stats()
                 QMessageBox.information(self, "成功", "历史消息已清空")
             except Exception as e:

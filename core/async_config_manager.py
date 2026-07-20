@@ -52,6 +52,11 @@ class AsyncConfigManager(QObject):
         """获取配置文件路径"""
         return self.config_manager.config_file
     
+    @property
+    def config_dir(self):
+        """获取配置目录路径"""
+        return self.config_manager.config_dir
+    
     def get(self, key: str, default: Any = None) -> Any:
         """获取配置（同步，从内存读取）"""
         return self.config_manager.get(key, default)
@@ -68,9 +73,14 @@ class AsyncConfigManager(QObject):
         keys = key.split('.')
         config = self.config_manager.config
         
-        for k in keys[:-1]:
+        for i, k in enumerate(keys[:-1]):
             if k not in config:
                 config[k] = {}
+            elif not isinstance(config[k], dict):
+                raise TypeError(
+                    f"无法设置配置项 '{key}'：路径 '{'.'.join(keys[:i + 1])}' "
+                    f"处的值是 {type(config[k]).__name__} 而不是字典"
+                )
             config = config[k]
         
         config[keys[-1]] = value
@@ -87,7 +97,12 @@ class AsyncConfigManager(QObject):
             self.save_timer.start(self.save_delay)
     
     def _do_save(self):
-        """执行保存（异步）"""
+        """执行保存（异步）
+        
+        在主线程完成JSON序列化（生成不可变快照），
+        仅将磁盘写入放到后台线程，避免后台线程遍历配置字典时
+        主线程并发修改导致的序列化异常或写入脏数据。
+        """
         if not self._pending_save:
             return
         
@@ -97,10 +112,34 @@ class AsyncConfigManager(QObject):
         if not hasattr(self, '_save_task_manager'):
             self._save_task_manager = AsyncTaskManager()
         
+        # 主线程序列化快照（配置体量小，序列化开销可忽略）
+        import json
+        try:
+            snapshot = json.dumps(self.config_manager.config, indent=2, ensure_ascii=False)
+        except Exception as e:
+            error_msg = f"序列化配置失败: {e}"
+            logger.error(error_msg)
+            self.config_error.emit(error_msg)
+            return
+        
+        # 序列化完成即认为本批修改已被捕获；
+        # 之后的新修改会重新置位 _pending_save 并重启防抖定时器
+        self._pending_save = False
+        
+        config_file = self.config_manager.config_file
+        config_dir = self.config_manager.config_dir
+        
         def save_task():
-            """后台保存任务"""
+            """后台保存任务（原子写入）"""
             try:
-                self.config_manager.save_config()
+                import os
+                config_dir.mkdir(parents=True, exist_ok=True)
+                temp_file = config_file.with_suffix('.json.tmp')
+                with open(temp_file, 'w', encoding='utf-8') as f:
+                    f.write(snapshot)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(temp_file, config_file)
                 return True
             except Exception as e:
                 return str(e)
@@ -108,11 +147,11 @@ class AsyncConfigManager(QObject):
         def on_complete(result):
             """保存完成回调"""
             if result is True:
-                self._pending_save = False
                 self.config_saved.emit()
-                logger.info("✓ 配置已自动保存到文件")
-                print("✓ 配置已自动保存到文件")
+                logger.info("配置已自动保存到文件")
             else:
+                # 保存失败，重新标记待保存，等待下次机会（或退出时force_save）
+                self._pending_save = True
                 error_msg = f"保存配置失败: {result}"
                 logger.error(error_msg)
                 self.config_error.emit(error_msg)

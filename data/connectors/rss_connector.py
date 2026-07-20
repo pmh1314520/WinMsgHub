@@ -8,7 +8,7 @@ import logging
 import time
 import uuid
 import hashlib
-from typing import Callable, Optional, Set
+from typing import Callable, Optional
 import threading
 import feedparser
 from datetime import datetime
@@ -30,7 +30,8 @@ class RSSConnector(MessageConnector):
         self._connected = False
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
-        self._seen_entries: Set[str] = set()
+        # 用dict作为"插入有序集合"，裁剪时可以准确删除最旧的条目
+        self._seen_entries: dict = {}
     
     def connect(self, config: dict) -> bool:
         """建立RSS订阅连接
@@ -50,8 +51,10 @@ class RSSConnector(MessageConnector):
                 return False
             
             # 测试订阅源是否可访问
+            # 注意：bozo=1只表示解析过程中有非致命问题（如编码声明不规范），
+            # 只要能解析出条目就应该接受，否则会误拒很多正常订阅源
             feed = self._fetch_feed(url)
-            if not feed or feed.bozo:
+            if not feed or (feed.bozo and not feed.entries):
                 logger.error(f"无法访问RSS订阅源: {url}")
                 return False
             
@@ -83,11 +86,16 @@ class RSSConnector(MessageConnector):
             return None
     
     def _initialize_seen_entries(self, feed):
-        """初始化已见条目集合"""
+        """初始化已见条目集合
+        
+        必须记录首次抓取到的所有条目，否则首次轮询时
+        未记录的历史条目会被当作新内容，造成弹窗风暴。
+        """
         try:
-            for entry in feed.entries[:10]:  # 只记录最近10条
+            for entry in feed.entries:
                 entry_id = self._get_entry_id(entry)
-                self._seen_entries.add(entry_id)
+                self._seen_entries[entry_id] = True
+            logger.info(f"RSS初始化完成，已记录 {len(self._seen_entries)} 条历史条目")
         except Exception as e:
             logger.error(f"初始化已见条目失败: {e}")
     
@@ -109,7 +117,8 @@ class RSSConnector(MessageConnector):
         while not self._stop_event.is_set():
             try:
                 feed = self._fetch_feed(url)
-                if feed and not feed.bozo:
+                # 只要能解析出条目就处理（bozo只是非致命解析警告）
+                if feed and feed.entries:
                     self._process_feed(feed)
             except Exception as e:
                 logger.error(f"RSS轮询错误: {e}")
@@ -128,11 +137,12 @@ class RSSConnector(MessageConnector):
                     continue
                 
                 # 标记为已见
-                self._seen_entries.add(entry_id)
+                self._seen_entries[entry_id] = True
                 
-                # 限制已见集合大小
+                # 限制已见集合大小（dict保持插入顺序，删除最旧的一半）
                 if len(self._seen_entries) > 1000:
-                    self._seen_entries = set(list(self._seen_entries)[-500:])
+                    keys = list(self._seen_entries.keys())
+                    self._seen_entries = {k: True for k in keys[-500:]}
                 
                 # 创建消息
                 if self.callback:
@@ -141,11 +151,14 @@ class RSSConnector(MessageConnector):
                     link = entry.get('link', '')
                     
                     # 解析发布时间
+                    # feedparser返回的struct_time是UTC时间，
+                    # 必须用calendar.timegm转换；time.mktime会当成本地时间导致时区偏差
+                    import calendar
                     timestamp = time.time()
                     if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                        timestamp = time.mktime(entry.published_parsed)
+                        timestamp = calendar.timegm(entry.published_parsed)
                     elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
-                        timestamp = time.mktime(entry.updated_parsed)
+                        timestamp = calendar.timegm(entry.updated_parsed)
                     
                     # 获取用户配置的名称
                     source_name = self.config.get('name', '默认')

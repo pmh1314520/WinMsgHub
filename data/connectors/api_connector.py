@@ -37,7 +37,30 @@ class APIConnector(MessageConnector):
         self._poll_thread: Optional[threading.Thread] = None
         self._stop_polling = threading.Event()
         
+        # 消息去重：记录最近处理过的消息指纹，
+        # 避免API每次轮询返回相同内容时重复弹窗
+        self._seen_fingerprints: dict = {}
+        self._max_fingerprint_cache = 500
+        
         logger.info("API连接器已初始化")
+    
+    @staticmethod
+    def _get_endpoints(config: dict) -> List[str]:
+        """从配置中提取端点列表
+        
+        同时兼容两种配置格式：
+        - endpoints: ["https://...", ...]（列表格式）
+        - url: "https://..."（界面配置对话框保存的单URL格式）
+        """
+        endpoints = config.get('endpoints') or []
+        if isinstance(endpoints, str):
+            endpoints = [endpoints]
+        
+        single_url = (config.get('url') or '').strip()
+        if single_url and single_url not in endpoints:
+            endpoints = list(endpoints) + [single_url]
+        
+        return [e for e in endpoints if isinstance(e, str) and e.strip()]
     
     def connect(self, config: dict) -> bool:
         """
@@ -45,7 +68,8 @@ class APIConnector(MessageConnector):
         
         Args:
             config: 连接配置字典，包含以下字段：
-                - endpoints (list): API端点URL列表
+                - endpoints (list) 或 url (str): API端点
+                - method (str, 可选): 请求方法 GET/POST，默认GET
                 - poll_interval (int, 可选): 轮询间隔（秒），默认60
                 - headers (dict, 可选): HTTP请求头
                 - timeout (int, 可选): 请求超时（秒），默认30
@@ -55,10 +79,10 @@ class APIConnector(MessageConnector):
         """
         try:
             self._config = config
-            endpoints = config.get('endpoints', [])
+            endpoints = self._get_endpoints(config)
             
             if not endpoints:
-                logger.error("未配置API端点")
+                logger.error("未配置API端点（请填写url或endpoints）")
                 return False
             
             # 验证端点URL
@@ -124,22 +148,33 @@ class APIConnector(MessageConnector):
     
     def _poll_endpoints(self):
         """轮询所有端点"""
-        endpoints = self._config.get('endpoints', [])
+        endpoints = self._get_endpoints(self._config)
         headers = self._config.get('headers', {})
         timeout = self._config.get('timeout', 30)
+        method = str(self._config.get('method', 'GET')).upper()
         
         for endpoint in endpoints:
+            # 每个端点处理前都检查停止标志，保证断开时快速退出
+            if self._stop_polling.is_set():
+                return
+            
             try:
-                response = requests.get(endpoint, headers=headers, timeout=timeout)
+                if method == 'POST':
+                    response = requests.post(endpoint, headers=headers, timeout=timeout)
+                else:
+                    response = requests.get(endpoint, headers=headers, timeout=timeout)
                 response.raise_for_status()
                 
                 # 解析响应
                 data = response.json()
                 messages = self._parse_response(data, endpoint)
                 
-                # 调用回调函数
+                # 调用回调函数（跳过重复消息）
                 if self._callback:
                     for message in messages:
+                        if self._is_duplicate(message):
+                            logger.debug(f"API消息与上次轮询重复，已跳过: {message.title}")
+                            continue
                         try:
                             self._callback(message)
                         except Exception as e:
@@ -147,6 +182,28 @@ class APIConnector(MessageConnector):
                             
             except Exception as e:
                 logger.error(f"轮询端点 {endpoint} 失败: {str(e)}")
+    
+    def _is_duplicate(self, message: Message) -> bool:
+        """检查消息是否与最近轮询到的消息重复
+        
+        API轮询大概率反复返回相同内容，用内容指纹去重，
+        否则每个轮询周期都会为同一条消息弹窗。
+        """
+        import hashlib
+        fingerprint = hashlib.md5(
+            f"{message.source}|{message.title}|{message.content}".encode('utf-8', errors='ignore')
+        ).hexdigest()
+        
+        if fingerprint in self._seen_fingerprints:
+            return True
+        
+        self._seen_fingerprints[fingerprint] = True
+        # 限制缓存大小（dict保持插入顺序，删除最旧的一半）
+        if len(self._seen_fingerprints) > self._max_fingerprint_cache:
+            keys = list(self._seen_fingerprints.keys())
+            self._seen_fingerprints = {k: True for k in keys[-self._max_fingerprint_cache // 2:]}
+        
+        return False
     
     def _parse_response(self, data: dict, endpoint: str) -> List[Message]:
         """解析API响应 - 支持嵌套JSON格式"""
@@ -165,8 +222,12 @@ class APIConnector(MessageConnector):
                 if 'msg' in data and isinstance(data['msg'], str):
                     try:
                         nested_data = json.loads(data['msg'])
-                        data = nested_data
-                        logger.debug("API检测到嵌套格式，已解析")
+                        # 只有解析结果是字典才采用，避免字符串/数组破坏后续处理
+                        if isinstance(nested_data, dict):
+                            data = nested_data
+                            logger.debug("API检测到嵌套格式，已解析")
+                        else:
+                            data = {'title': '新消息', 'content': str(nested_data)}
                     except json.JSONDecodeError:
                         if 'title' not in data and 'content' not in data:
                             data = {
@@ -184,7 +245,8 @@ class APIConnector(MessageConnector):
                         if 'msg' in item and isinstance(item['msg'], str):
                             try:
                                 nested_item = json.loads(item['msg'])
-                                item = nested_item
+                                if isinstance(nested_item, dict):
+                                    item = nested_item
                             except json.JSONDecodeError:
                                 pass
                         

@@ -671,6 +671,20 @@ class DataPage(QWidget):
                     with open(file_path, 'r', encoding='utf-8') as f:
                         config_data = json.load(f)
                     
+                    # 基础格式校验
+                    if not isinstance(config_data, dict):
+                        QMessageBox.critical(self, "错误", "导入失败：配置文件格式不正确（应为JSON对象）")
+                        return
+                    
+                    # 走配置验证流程：补全缺失键、修正非法值，
+                    # 避免导入损坏/过时的配置导致应用异常
+                    validate = getattr(self.config_manager, '_validate_config', None)
+                    if validate is None and hasattr(self.config_manager, 'config_manager'):
+                        # AsyncConfigManager包装时，取内部真实ConfigManager的验证方法
+                        validate = getattr(self.config_manager.config_manager, '_validate_config', None)
+                    if validate:
+                        config_data = validate(config_data)
+                    
                     # 保存配置
                     self.config_manager.config = config_data
                     self.config_manager.save_config()

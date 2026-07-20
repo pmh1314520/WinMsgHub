@@ -7,10 +7,6 @@ WinMsgHub (WinMsgHub) - 应用程序主入口
 import sys
 from pathlib import Path
 
-# 版本标记 - 用于确认代码是否正确加载
-APP_VERSION = "2026-02-03-v3-realtime-save"
-print(f"[启动] WinMsgHub 版本: {APP_VERSION}")
-
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QTimer
 
@@ -22,11 +18,8 @@ from core.popup_manager import PopupManager
 from core.connector_manager import ConnectorManager
 from data.database import Database
 
-# 导入UI模块 - 添加调试信息
-print(f"[启动] 正在导入 ModernMainWindow...")
+# 导入UI模块
 from ui.modern_main_window import ModernMainWindow
-print(f"[启动] ModernMainWindow 导入完成，文件路径: {ModernMainWindow.__module__}")
-
 from ui.tray_icon import TrayIcon
 from ui.modern_theme import ModernTheme
 from utils.logger import get_logger
@@ -54,7 +47,7 @@ class WinMsgHubApplication:
         self.app.setApplicationDisplayName("WinMsgHub")
         
         # 设置应用程序版本
-        self.app.setApplicationVersion("1.1.4")
+        self.app.setApplicationVersion("1.2.0")
         
         # 设置应用图标（必须在设置AppUserModelID之前）
         from PyQt6.QtGui import QIcon
@@ -152,54 +145,14 @@ class WinMsgHubApplication:
     
     def _init_filter_engine(self):
         """初始化过滤引擎"""
-        from core.filter_engine import FilterRule, FilterCondition
+        from core.filter_engine import rules_from_config
         
-        # 从配置加载过滤规则
+        # 从配置加载过滤规则（使用与过滤规则页面一致的转换逻辑）
         config = self.config_manager.get_all()
         filters_config = config.get('filters', {})
         filter_rules = filters_config.get('rules', [])
         
-        rules = []
-        for rule_data in filter_rules:
-            if not rule_data.get('enabled', True):
-                continue
-            
-            # 转换规则类型
-            rule_type = rule_data.get('type', 'contains')
-            condition_map = {
-                'contains': FilterCondition.CONTAINS,
-                'not_contains': FilterCondition.NOT_CONTAINS,
-                'source': FilterCondition.EQUALS,
-                'regex': FilterCondition.REGEX
-            }
-            condition = condition_map.get(rule_type, FilterCondition.CONTAINS)
-            
-            # 确定要检查的字段
-            field = rule_data.get('field', 'content')
-            if field == 'both':
-                # 如果是"标题和内容"，需要创建两条规则
-                rules.append(FilterRule(
-                    enabled=True,
-                    field='title',
-                    condition=condition,
-                    value=rule_data.get('keyword', ''),
-                    action='block' if rule_data.get('action_block', True) else 'allow'
-                ))
-                rules.append(FilterRule(
-                    enabled=True,
-                    field='content',
-                    condition=condition,
-                    value=rule_data.get('keyword', ''),
-                    action='block' if rule_data.get('action_block', True) else 'allow'
-                ))
-            else:
-                rules.append(FilterRule(
-                    enabled=True,
-                    field=field,
-                    condition=condition,
-                    value=rule_data.get('keyword', ''),
-                    action='block' if rule_data.get('action_block', True) else 'allow'
-                ))
+        rules = rules_from_config(filter_rules)
         
         self.filter_engine = FilterEngine(rules)
         logger.info(f"过滤引擎已初始化，加载了 {len(rules)} 条规则")
@@ -234,12 +187,12 @@ class WinMsgHubApplication:
         self.local_mqtt_manager = LocalMQTTManager(self.config_manager)
         logger.info("本地MQTT服务管理器已初始化")
         
-        # 检查是否需要自动启动服务
+        # 检查是否需要自动启动服务（用户在本地MQTT页面勾选的偏好）
         auto_start = self.config_manager.get("local_mqtt.auto_start", False)
         if auto_start:
             port = self.config_manager.get("local_mqtt.port", 1883)
             ws_port = self.config_manager.get("local_mqtt.ws_port", 8083)
-            logger.info(f"检测到上次服务已启动，正在自动启动本地MQTT服务...")
+            logger.info(f"已启用MQTT服务自动启动，正在启动本地MQTT服务...")
             
             # 使用QTimer延迟启动，避免阻塞初始化
             from PyQt6.QtCore import QTimer
@@ -275,18 +228,11 @@ class WinMsgHubApplication:
         self.database.save_message(message)
         
         # 显示弹窗（使用任务自定义音效或默认音效）
-        if task.sound_file:
-            # 临时修改弹窗配置使用自定义音效
-            original_sound = self.config_manager.get("popup.sound_file")
-            self.config_manager.set("popup.sound_file", task.sound_file)
-            self.popup_manager.show_notification(message)
-            # 恢复原音效配置
-            if original_sound:
-                self.config_manager.set("popup.sound_file", original_sound)
-            else:
-                self.config_manager.set("popup.sound_file", "")
-        else:
-            self.popup_manager.show_notification(message)
+        # 通过参数覆盖音效，避免临时改写全局配置导致配置被污染
+        self.popup_manager.show_notification(
+            message,
+            sound_file_override=task.sound_file if task.sound_file else None
+        )
         
         logger.info(f"定时任务触发: {task.name}")
     
@@ -450,6 +396,7 @@ class WinMsgHubApplication:
         self.tray_icon.show_page_requested.connect(self._show_page)
         self.tray_icon.test_popup_requested.connect(self._test_popup)
         self.main_window.closing.connect(self._on_main_window_closing)
+        self.main_window.quit_requested.connect(self._quit_application)
         self.main_window.reload_connectors_requested.connect(self.reload_connectors)
         
         # 监听数据库变化信号（事件驱动，真正的实时更新）
@@ -498,19 +445,9 @@ class WinMsgHubApplication:
                     # 0表示永久保留
                     return 0
                 
-                import time
-                cutoff_time = time.time() - (retention_days * 24 * 3600)
-                
-                # 获取所有消息
-                all_messages = self.database.get_all_messages()
-                deleted_count = 0
-                
-                for msg in all_messages:
-                    if msg.timestamp < cutoff_time:
-                        self.database.delete_message(msg.id)
-                        deleted_count += 1
-                
-                return deleted_count
+                # 单条SQL批量删除，避免逐条删除时每条都触发
+                # data_changed信号导致UI风暴和数据库性能问题
+                return self.database.delete_old_messages(retention_days)
             except Exception as e:
                 logger.error(f"清理历史消息失败: {e}")
                 return 0
@@ -540,14 +477,11 @@ class WinMsgHubApplication:
     
     def _test_popup(self):
         """测试弹窗"""
-        self._show_main_window()
-        # 可以在这里触发测试弹窗
         from data.models import Message
-        from ui.notification_popup import NotificationPopup, PopupStyle, PopupPosition
         import time
         
         message = Message(
-            id="tray_test",
+            id=f"tray_test_{int(time.time())}",
             source="托盘测试",
             title="托盘菜单测试",
             content="这是从托盘菜单触发的测试弹窗",
@@ -555,22 +489,16 @@ class WinMsgHubApplication:
             metadata={}
         )
         
-        style = PopupStyle(
-            position=PopupPosition.TOP_RIGHT,
-            display_duration=5000
-        )
-        
-        popup = NotificationPopup(message, style)
-        popup.show()
-        popup.set_auto_close(5000)
+        # 通过弹窗管理器显示，使用户配置的样式/位置/音效全部生效
+        self.popup_manager.show_notification(message)
     
     def _update_tray_stats(self):
         """更新托盘统计信息（异步）"""
         def update_task():
             """后台任务"""
             try:
-                # 获取消息总数
-                total_messages = len(self.database.get_all_messages())
+                # 获取消息总数（COUNT查询，避免加载全部消息浪费内存）
+                total_messages = self.database.get_message_count()
                 
                 # 获取活动连接器数量
                 connectors = self.message_processor.get_all_connectors()

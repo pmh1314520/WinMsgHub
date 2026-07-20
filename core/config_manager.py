@@ -188,27 +188,24 @@ class ConfigManager:
                 logger.warning("显示时长无效，使用默认值")
                 validated_config["popup"]["display_duration"] = default_config["popup"]["display_duration"]
             
-            # 验证端口号 - 只验证字典类型的配置
-            mqtt_config = validated_config.get("message_sources", {}).get("mqtt", {})
-            if isinstance(mqtt_config, dict):
-                mqtt_port = mqtt_config.get("port", 0)
-                if not (1 <= mqtt_port <= 65535):
-                    logger.warning(f"MQTT端口号 {mqtt_port} 无效，使用默认值")
-                    validated_config["message_sources"]["mqtt"]["port"] = default_config["message_sources"]["mqtt"]["port"]
-            
-            webhook_config = validated_config.get("message_sources", {}).get("webhook", {})
-            if isinstance(webhook_config, dict):
-                webhook_port = webhook_config.get("port", 0)
-                if not (1 <= webhook_port <= 65535):
-                    logger.warning(f"Webhook端口号 {webhook_port} 无效，使用默认值")
-                    validated_config["message_sources"]["webhook"]["port"] = default_config["message_sources"]["webhook"]["port"]
-            
-            imap_config = validated_config.get("message_sources", {}).get("imap", {})
-            if isinstance(imap_config, dict):
-                imap_port = imap_config.get("port", 0)
-                if not (1 <= imap_port <= 65535):
-                    logger.warning(f"IMAP端口号 {imap_port} 无效，使用默认值")
-                    validated_config["message_sources"]["imap"]["port"] = default_config["message_sources"]["imap"]["port"]
+            # 验证端口号 - 兼容旧版字典格式与新版列表格式
+            # 注意：默认配置中 message_sources 的各项是列表，
+            # 不能从默认配置取端口默认值（此前这里会抛异常导致整个用户配置被重置）
+            default_ports = {"mqtt": 8883, "webhook": 8080, "imap": 993}
+            for source_type, default_port in default_ports.items():
+                source_config = validated_config.get("message_sources", {}).get(source_type)
+                if isinstance(source_config, dict) and "port" in source_config:
+                    port = source_config.get("port", 0)
+                    if not (isinstance(port, int) and 1 <= port <= 65535):
+                        logger.warning(f"{source_type}端口号 {port} 无效，使用默认值 {default_port}")
+                        source_config["port"] = default_port
+                elif isinstance(source_config, list):
+                    for item in source_config:
+                        if isinstance(item, dict) and "port" in item:
+                            port = item.get("port", 0)
+                            if not (isinstance(port, int) and 1 <= port <= 65535):
+                                logger.warning(f"{source_type}端口号 {port} 无效，使用默认值 {default_port}")
+                                item["port"] = default_port
             
             # 验证历史保留天数
             retention_days = validated_config.get("history", {}).get("retention_days", 0)
@@ -251,14 +248,26 @@ class ConfigManager:
         """保存配置到文件
         
         配置以JSON格式保存，使用UTF-8编码。
+        采用"先写临时文件再原子替换"的方式，避免写入中途
+        崩溃/断电导致配置文件损坏或清空。
         """
         try:
             # 确保配置目录存在
             self.config_dir.mkdir(parents=True, exist_ok=True)
             
-            # 保存配置
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(self.config, f, indent=2, ensure_ascii=False)
+            # 先在主线程/调用线程序列化为字符串快照，
+            # 避免json.dump边遍历边被其他线程修改导致的异常
+            content = json.dumps(self.config, indent=2, ensure_ascii=False)
+            
+            # 先写临时文件，成功后原子替换正式文件
+            import os
+            temp_file = self.config_file.with_suffix('.json.tmp')
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
+            
+            os.replace(temp_file, self.config_file)
             
             logger.info(f"配置已保存到: {self.config_file}")
         except Exception as e:
@@ -297,14 +306,23 @@ class ConfigManager:
         Args:
             key: 配置键，支持点号分隔的路径
             value: 配置值
+        
+        Raises:
+            TypeError: 当路径中间节点不是字典时（如试图往列表里按键名写入），
+                       抛出明确异常而不是隐式破坏已有配置结构
         """
         keys = key.split('.')
         config = self.config
         
         # 导航到目标位置
-        for k in keys[:-1]:
+        for i, k in enumerate(keys[:-1]):
             if k not in config:
                 config[k] = {}
+            elif not isinstance(config[k], dict):
+                raise TypeError(
+                    f"无法设置配置项 '{key}'：路径 '{'.'.join(keys[:i + 1])}' "
+                    f"处的值是 {type(config[k]).__name__} 而不是字典"
+                )
             config = config[k]
         
         # 设置值

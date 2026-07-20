@@ -53,6 +53,22 @@ class ConnectorManager:
         
         logger.info("连接器管理器已初始化")
     
+    # 日志中需要脱敏的配置字段
+    SENSITIVE_KEYS = {'password', 'token', 'secret', 'api_key', 'apikey', 'authorization'}
+    
+    @classmethod
+    def _redact_config(cls, config: dict) -> dict:
+        """返回脱敏后的配置副本，用于日志输出（密码等敏感信息不落日志）"""
+        if not isinstance(config, dict):
+            return config
+        redacted = {}
+        for key, value in config.items():
+            if isinstance(key, str) and key.lower() in cls.SENSITIVE_KEYS and value:
+                redacted[key] = '***'
+            else:
+                redacted[key] = value
+        return redacted
+    
     def load_connectors(self, config: dict):
         """从配置加载所有连接器
         
@@ -71,23 +87,23 @@ class ConnectorManager:
                 continue
             
             logger.info(f"处理连接器类型: {connector_type}")
-            logger.info(f"  配置类型: {type(sources)}")
-            logger.info(f"  配置内容: {sources}")
             
             # 如果sources是列表，则为多实例配置
             if isinstance(sources, list):
-                logger.info(f"  检测到列表格式，共 {len(sources)} 个配置")
+                logger.info(f"  共 {len(sources)} 个配置")
                 for idx, source_config in enumerate(sources):
+                    if not isinstance(source_config, dict):
+                        logger.warning(f"    [{idx}] 配置格式无效（应为对象），跳过")
+                        continue
                     enabled = source_config.get('enabled', False)
                     name = source_config.get('name', f'{connector_type}_{idx}')
-                    logger.info(f"    [{idx}] {name} - enabled={enabled}")
+                    logger.info(f"    [{idx}] {name} - enabled={enabled}, "
+                                f"配置: {self._redact_config(source_config)}")
                     if enabled:
                         self._create_connector(connector_type, source_config, idx)
-                    else:
-                        logger.info(f"    [{idx}] {name} 未启用，跳过")
             # 兼容旧的单实例配置
             elif isinstance(sources, dict) and sources.get('enabled', False):
-                logger.info(f"  检测到字典格式（旧格式）")
+                logger.info(f"  检测到字典格式（旧格式），配置: {self._redact_config(sources)}")
                 self._create_connector(connector_type, sources, 0)
             else:
                 logger.info(f"  跳过（空配置或未启用）")

@@ -42,8 +42,9 @@ class AsyncWorker(QThread):
             if not self._is_cancelled:
                 self.finished.emit(result)
         except Exception as e:
-            error_msg = f"{str(e)}\n{traceback.format_exc()}"
-            self.error.emit(error_msg)
+            if not self._is_cancelled:
+                error_msg = f"{str(e)}\n{traceback.format_exc()}"
+                self.error.emit(error_msg)
     
     def cancel(self):
         """取消任务"""
@@ -59,6 +60,7 @@ class AsyncTaskManager(QObject):
     def __init__(self):
         super().__init__()
         self.workers = {}  # 任务ID -> Worker
+        self._retired_workers = []  # 已被替换但仍在运行的worker（防止被GC导致崩溃）
         self._is_cleaning_up = False  # 清理标志
     
     def run_task(self, task_id: str, func: Callable, 
@@ -86,7 +88,13 @@ class AsyncTaskManager(QObject):
                 old_worker.cancel()
                 old_worker.wait(500)  # 最多等待0.5秒
                 if old_worker.isRunning():
-                    old_worker.terminate()  # 强制终止
+                    # 仍在运行：不强制terminate（会导致资源状态不一致甚至崩溃），
+                    # 将其移入"退役"列表等待自然结束，让新任务继续
+                    self._retired_workers.append(old_worker)
+                    old_worker.finished.connect(
+                        lambda _=None, w=old_worker: self._discard_retired(w))
+                    old_worker.error.connect(
+                        lambda _=None, w=old_worker: self._discard_retired(w))
         
         # 创建新任务
         worker = AsyncWorker(func, *args, **kwargs)
@@ -98,13 +106,14 @@ class AsyncTaskManager(QObject):
             worker.error.connect(on_error)
         
         # 任务完成后清理
-        def cleanup():
-            if task_id in self.workers and not self._is_cleaning_up:
-                worker = self.workers[task_id]
-                # 确保线程已完全停止
-                if worker.isRunning():
-                    worker.wait(100)
-                del self.workers[task_id]
+        # 注意：必须校验字典中记录的仍是当前worker，
+        # 否则旧worker迟到的信号会把新worker从字典中误删，
+        # 新worker随即被GC，引发"QThread: Destroyed while thread is still running"崩溃
+        def cleanup(_=None, w=worker, tid=task_id):
+            if self._is_cleaning_up:
+                return
+            if self.workers.get(tid) is w:
+                del self.workers[tid]
         
         worker.finished.connect(cleanup)
         worker.error.connect(cleanup)
@@ -113,15 +122,22 @@ class AsyncTaskManager(QObject):
         self.workers[task_id] = worker
         worker.start()
     
+    def _discard_retired(self, worker):
+        """移除已结束的退役worker"""
+        try:
+            self._retired_workers.remove(worker)
+        except ValueError:
+            pass
+    
     def cancel_task(self, task_id: str):
         """取消指定任务"""
         if task_id in self.workers:
-            worker = self.workers[task_id]
+            worker = self.workers.pop(task_id)
             worker.cancel()
             worker.wait(500)
             if worker.isRunning():
-                worker.terminate()
-            del self.workers[task_id]
+                # 保留引用等待其自然结束，避免GC正在运行的QThread导致崩溃
+                self._retired_workers.append(worker)
     
     def cancel_all(self):
         """取消所有任务"""
@@ -130,7 +146,7 @@ class AsyncTaskManager(QObject):
             worker.cancel()
             worker.wait(500)
             if worker.isRunning():
-                worker.terminate()
+                self._retired_workers.append(worker)
         self.workers.clear()
         self._is_cleaning_up = False
     
@@ -141,9 +157,14 @@ class AsyncTaskManager(QObject):
             if worker.isRunning():
                 worker.cancel()
                 # 给线程一点时间退出
-                worker.wait(500)  # 最多等待0.5秒
+                worker.wait(1000)  # 最多等待1秒
                 if worker.isRunning():
-                    # 如果还在运行，强制终止
+                    # 仍未退出，最后手段才强制终止（仅退出时使用）
                     worker.terminate()
-                    worker.wait(100)  # 等待终止完成
+                    worker.wait(200)  # 等待终止完成
         self.workers.clear()
+        # 等待退役worker结束
+        for worker in self._retired_workers:
+            if worker.isRunning():
+                worker.wait(500)
+        self._retired_workers.clear()

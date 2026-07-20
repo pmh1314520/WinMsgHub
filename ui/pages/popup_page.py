@@ -802,7 +802,6 @@ class PopupPage(QWidget):
         
         # 初始化显示状态
         self._update_max_lines_visibility()
-        layout.addWidget(hint)
         
         return card
     
@@ -1577,6 +1576,11 @@ class PopupPage(QWidget):
                 QMessageBox.warning(self, "错误", "规则名称不能为空")
                 return
             
+            # 名称不能包含冒号（列表项以"名称: 正则"格式存储，冒号会破坏解析）
+            if ':' in name or '：' in name:
+                QMessageBox.warning(self, "错误", "规则名称不能包含冒号")
+                return
+            
             # 验证正则表达式
             if pattern:
                 try:
@@ -1648,6 +1652,11 @@ class PopupPage(QWidget):
             
             if not name:
                 QMessageBox.warning(self, "错误", "规则名称不能为空")
+                return
+            
+            # 名称不能包含冒号（列表项以"名称: 正则"格式存储，冒号会破坏解析）
+            if ':' in name or '：' in name:
+                QMessageBox.warning(self, "错误", "规则名称不能包含冒号")
                 return
             
             # 验证正则表达式
@@ -1727,7 +1736,7 @@ class PopupPage(QWidget):
             
             # 显示
             self.duration_spin.setValue(popup_config.get("display_duration", 5000))
-            self.animation_spin.setValue(popup_config.get("animation_duration", 300))
+            self.animation_spin.setValue(popup_config.get("animation_duration", 400))
             self.max_popups_spin.setValue(popup_config.get("max_popups", 5))
             self.auto_copy_check.setChecked(popup_config.get("auto_copy", False))
             
@@ -2468,7 +2477,7 @@ class PopupPage(QWidget):
             self.content_max_lines_spin.setValue(5)  # 内容最多5行
             self._select_position("top_right")
             self.duration_spin.setValue(5000)
-            self.animation_spin.setValue(300)
+            self.animation_spin.setValue(400)
             self.max_popups_spin.setValue(5)  # 最多5个弹窗
             self.auto_copy_check.setChecked(False)
             self.copy_on_click_radio.setChecked(True)  # 默认点击复制模式
@@ -2586,6 +2595,7 @@ class PopupPage(QWidget):
                 "top_center": PopupPosition.TOP_CENTER,
                 "top_right": PopupPosition.TOP_RIGHT,
                 "center_left": PopupPosition.CENTER_LEFT,
+                "center": PopupPosition.CENTER,
                 "center_right": PopupPosition.CENTER_RIGHT,
                 "bottom_left": PopupPosition.BOTTOM_LEFT,
                 "bottom_center": PopupPosition.BOTTOM_CENTER,
@@ -2924,7 +2934,7 @@ class PopupPage(QWidget):
     def _reset_display_defaults(self):
         """恢复显示设置默认值"""
         self.duration_spin.setValue(5000)
-        self.animation_spin.setValue(300)
+        self.animation_spin.setValue(400)
         self.max_popups_spin.setValue(5)  # 恢复最大弹窗数量
         self.auto_copy_check.setChecked(False)
         self.copy_on_click_radio.setChecked(True)

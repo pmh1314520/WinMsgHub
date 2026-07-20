@@ -199,6 +199,15 @@ class SchedulerManager(QObject):
     
     def _check_tasks(self):
         """检查并触发任务"""
+        # 推进番茄钟状态：即使定时弹窗页面未打开，
+        # 番茄钟到点也必须切换工作/休息并弹出提醒
+        # （get_pomodoro_status内部会在剩余时间归零时触发状态切换）
+        if self.pomodoro_state.get("is_running", False):
+            try:
+                self.get_pomodoro_status()
+            except Exception as e:
+                logger.error(f"推进番茄钟状态失败: {e}")
+        
         # 如果没有启用的任务，直接返回
         if not any(task.enabled for task in self.tasks):
             return

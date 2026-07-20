@@ -388,8 +388,16 @@ class SourcesPage(QWidget):
         index = data['index']
         
         all_config = self.config_manager.get_all()
-        current_enabled = all_config['message_sources'][source_type][index].get('enabled', False)
-        all_config['message_sources'][source_type][index]['enabled'] = not current_enabled
+        sources = all_config.get('message_sources', {}).get(source_type, [])
+        
+        # 防御：配置可能已被其他途径修改，索引可能失效
+        if not isinstance(sources, list) or not (0 <= index < len(sources)):
+            QMessageBox.warning(self, "警告", "配置已发生变化，请刷新列表后重试！")
+            self._refresh_list(source_type)
+            return
+        
+        current_enabled = sources[index].get('enabled', False)
+        sources[index]['enabled'] = not current_enabled
         
         self.config_manager.config = all_config
         self.config_manager.save_config()
@@ -417,8 +425,6 @@ class SourcesPage(QWidget):
             status_label.setStyleSheet("color: #98C379; font-weight: bold;")
         elif source_config:
             status_label.setText("已禁用")
-            status_label.setStyleSheet("color: #E06C75; font-weight: bold;")
-            status_label.setText("✗ 已禁用")
             status_label.setStyleSheet("color: #E5C07B; font-weight: bold;")
         else:
             status_label.setText("未配置")

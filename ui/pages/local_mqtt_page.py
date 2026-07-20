@@ -698,90 +698,36 @@ A: 检查1883端口是否被占用，或等待几秒后重新点击“启动服�
 可能的原因和解决方法
 ========================================
 
-【方法1】添加到Windows Defender白名单（推荐）
+【方法1】检查端口是否被占用（最常见）
 -----------------------------------------
-1. 右键以管理员身份运行：添加到白名单.bat
-2. 或手动添加：
-   - 打开 Windows 安全中心
-   - 病毒和威胁防护 → 管理设置
-   - 排除项 → 添加或删除排除项
-   - 添加文件夹：选择 WinMsgHub 文件夹
+1. 按 Win + X，选择"终端(管理员)"或"PowerShell(管理员)"
+2. 执行命令查看1883端口占用情况：
+   netstat -ano | findstr :1883
+3. 如有占用，记下最后一列的PID，然后执行：
+   taskkill /PID <对应PID> /F
+4. 或者等待几秒后重新点击"启动服务"
 
-【方法2】解除文件锁定
+【方法2】检查是否有其他MQTT服务在运行
 -----------------------------------------
-1. 右键 localMQTTServer\\nanomq.exe
-2. 选择"属性"
-3. 在底部找到"安全"部分
-4. 勾选"解除锁定"
-5. 点击"确定"
+1. 检查是否已启动过其他MQTT Broker
+   （如EMQX、Mosquitto、另一个WinMsgHub实例等）
+2. 关闭多余的MQTT服务后重试
 
-【方法3】检查Windows安全中心隔离区
+【方法3】检查防火墙设置
 -----------------------------------------
-1. 打开 Windows 安全中心
-2. 病毒和威胁防护
-3. 保护历史记录
-4. 查找 nanomq.exe
-5. 如果被隔离，点击"还原"
+1. 打开 Windows 安全中心 → 防火墙和网络保护
+2. 允许应用通过防火墙
+3. 确保 WinMsgHub / Python 被允许通过专用网络
 
-【方法4】以管理员身份运行WinMsgHub
+【方法4】查看日志获取详细错误
 -----------------------------------------
-1. 完全关闭 WinMsgHub
-2. 右键 WinMsgHub 快捷方式
-3. 选择"以管理员身份运行"
-4. 重新尝试启动MQTT服务
-
-【方法5】使用诊断工具
------------------------------------------
-1. 进入 localMQTTServer 文件夹
-2. 右键以管理员身份运行：check_and_fix.bat
-3. 查看诊断结果和建议
-
-【方法6】临时关闭实时保护（不推荐）
------------------------------------------
-1. 打开 Windows 安全中心
-2. 病毒和威胁防护 → 管理设置
-3. 临时关闭"实时保护"
-4. 启动MQTT服务
-5. 重新开启"实时保护"
-6. 将WinMsgHub添加到白名单
-
-========================================
-详细说明文档
-========================================
-localMQTTServer\\README_启动失败解决方法.txt
+日志文件位置：
+%APPDATA%\\WinMsgHub\\logs\\winmsghub.log
                 """
                 
                 error_msg.setDetailedText(detailed_text)
-                error_msg.setStandardButtons(
-                    QMessageBox.StandardButton.Ok | 
-                    QMessageBox.StandardButton.Help
-                )
-                
-                result = error_msg.exec()
-                
-                if result == QMessageBox.StandardButton.Help:
-                    # 打开帮助文档
-                    import os
-                    help_file = self.mqtt_manager.mqtt_dir / "README_启动失败解决方法.txt"
-                    if help_file.exists():
-                        os.startfile(str(help_file))
-                    
-                    # 同时打开诊断工具
-                    check_tool = self.mqtt_manager.mqtt_dir / "check_and_fix.bat"
-                    if check_tool.exists():
-                        try:
-                            import ctypes
-                            # 以管理员权限运行诊断工具
-                            ctypes.windll.shell32.ShellExecuteW(
-                                None,
-                                "runas",
-                                str(check_tool),
-                                "",
-                                str(self.mqtt_manager.mqtt_dir),
-                                1  # SW_SHOWNORMAL
-                            )
-                        except:
-                            os.startfile(str(check_tool))
+                error_msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+                error_msg.exec()
         
         # 异步执行启动
         if not hasattr(self, '_start_task_manager'):
@@ -795,13 +741,40 @@ localMQTTServer\\README_启动失败解决方法.txt
         )
     
     def _stop_service(self):
-        """停止服务"""
+        """停止服务（异步执行，避免阻塞UI）"""
         from PyQt6.QtWidgets import QMessageBox
         
-        if self.mqtt_manager.stop_service():
-            QMessageBox.information(self, "成功", "本地MQTT服务已停止！")
-        else:
-            QMessageBox.warning(self, "警告", "停止本地MQTT服务时出现问题，请查看日志。")
+        def stop_task():
+            """后台停止任务"""
+            try:
+                return self.mqtt_manager.stop_service()
+            except Exception as e:
+                logger.error(f"停止MQTT服务失败: {e}")
+                return False, f"异常: {str(e)}"
+        
+        def on_stopped(result):
+            """停止完成回调"""
+            # stop_service返回(成功标志, 消息)元组，必须解包判断——
+            # 直接用元组做布尔判断永远为真，失败也会误报成功
+            success, message = result
+            
+            if success:
+                QMessageBox.information(self, "成功", "本地MQTT服务已停止！")
+            else:
+                QMessageBox.warning(self, "警告", f"停止本地MQTT服务时出现问题：{message}")
+            
+            # 立即更新状态
+            self._update_status_async()
+        
+        if not hasattr(self, '_stop_task_manager'):
+            from utils.async_worker import AsyncTaskManager
+            self._stop_task_manager = AsyncTaskManager()
+        
+        self._stop_task_manager.run_task(
+            "stop_mqtt_service",
+            stop_task,
+            on_finished=on_stopped
+        )
     
     def _restart_service(self):
         """重启服务"""

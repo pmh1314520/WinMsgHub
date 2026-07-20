@@ -94,7 +94,9 @@ class PopupStackManager:
         screen = QScreen.availableGeometry(popup.screen())
         margin = 20
         spacing = 10
-        taskbar_height = 50  # Windows任务栏高度预留
+        # availableGeometry已排除任务栏区域，无需再额外预留，
+        # 否则底部弹窗会悬空在任务栏上方50px处
+        taskbar_height = 0
         
         logger.debug(f"get_target_position: screen=({screen.x()}, {screen.y()}, {screen.width()}x{screen.height()}), position={popup.style.position.value}")
         
@@ -202,7 +204,8 @@ class PopupStackManager:
         screen = QScreen.availableGeometry(self._popups[0].screen())
         margin = 20
         spacing = 10
-        taskbar_height = 50  # Windows任务栏高度预留
+        # availableGeometry已排除任务栏区域，见get_target_position
+        taskbar_height = 0
         
         # 按位置分组
         position_groups = {}
@@ -645,9 +648,12 @@ class NotificationPopup(QWidget):
         # 使用配置的时间格式
         try:
             timestamp_str = datetime.fromtimestamp(self.message.timestamp).strftime(self.style.time_format)
-        except:
-            # 如果格式错误，使用默认格式
-            timestamp_str = datetime.fromtimestamp(self.message.timestamp).strftime('%H:%M:%S')
+        except (ValueError, OSError, OverflowError):
+            # 时间格式无效或时间戳异常时逐级降级，绝不让弹窗因此显示失败
+            try:
+                timestamp_str = datetime.fromtimestamp(self.message.timestamp).strftime('%H:%M:%S')
+            except (ValueError, OSError, OverflowError):
+                timestamp_str = datetime.now().strftime('%H:%M:%S')
         time_label = QLabel(timestamp_str)
         time_font = QFont(
             self.style.time_font_family,

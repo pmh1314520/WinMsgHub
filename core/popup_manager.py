@@ -40,9 +40,7 @@ class PopupManager:
         """从配置加载样式"""
         popup_config = self.config.get('popup', {})
         
-        # 获取 max_popups 并记录日志
         max_popups_value = popup_config.get('max_popups', 5)
-        logger.info(f"📖 _load_style: 从配置读取 max_popups = {max_popups_value}")
         
         # 转换position字符串为枚举
         position_str = popup_config.get('position', 'top_right')
@@ -54,9 +52,7 @@ class PopupManager:
         # 加载动画配置
         animation_config = popup_config.get('animation_config', {})
         
-        # 获取音量值并记录
         sound_volume_value = popup_config.get('sound_volume', 50)
-        logger.info(f"📖 创建 PopupStyle，sound_volume 参数 = {sound_volume_value}")
         
         style = PopupStyle(
             width=popup_config.get('width', 400),
@@ -109,35 +105,33 @@ class PopupManager:
             time_format=popup_config.get('time_format', '%H:%M:%S')
         )
         
-        logger.info(f"📖 PopupStyle 创建完成，max_popups = {style.max_popups}")
         return style
     
-    def show_notification(self, message: Message):
+    def show_notification(self, message: Message, sound_file_override: str = None):
         """
         显示通知弹窗
         
         Args:
             message: 要显示的消息
+            sound_file_override: 可选，覆盖本次弹窗使用的音效文件（用于定时任务自定义音效）
         """
         try:
-            # 强制重新加载配置，确保使用最新的配置
-            if hasattr(self.config, 'reload_config'):
-                self.config.reload_config()
-                logger.debug("已重新加载配置")
-            
-            # 每次显示前重新加载样式，确保使用最新配置
+            # 每次显示前从内存配置重新加载样式，确保使用最新配置。
+            # 注意：不要从磁盘reload配置——异步配置管理器可能还有未落盘的修改，
+            # 从磁盘重载会把用户刚改的设置覆盖丢失。
             self.style = self._load_style()
             
-            # 获取最大弹窗数量限制
-            max_popups = self.style.max_popups
-            logger.info(f"📊 准备显示弹窗: {message.id}, 当前数量: {len(self.active_popups)}, 最大限制: {max_popups}")
+            # 本次弹窗的音效覆盖（不修改全局配置）
+            if sound_file_override:
+                import dataclasses
+                self.style = dataclasses.replace(self.style, sound_file=sound_file_override)
             
-            # 在添加新弹窗之前，检查是否超过限制
-            # 如果当前数量 >= 最大限制，需要先移除旧弹窗腾出空间
-            while len(self.active_popups) >= max_popups:
-                oldest_popup = self.active_popups[0]
-                logger.info(f"🚫 PopupManager: 超过最大弹窗数量({max_popups})，移除最旧的弹窗: {oldest_popup.message.id}")
-                self.active_popups.remove(oldest_popup)
+            max_popups = self.style.max_popups
+            logger.debug(f"准备显示弹窗: {message.id}, 当前数量: {len(self.active_popups)}, 最大限制: {max_popups}")
+            
+            # 数量限制由 PopupStackManager.add_popup 统一执行：
+            # 它会真正 close() 最旧的弹窗，并通过 closed 信号同步本列表，
+            # 这里不再重复剔除（此前只移除列表引用而不关闭，导致旧弹窗残留在屏幕上）。
             
             # 创建弹窗
             popup = NotificationPopup(message, self.style)
@@ -147,7 +141,9 @@ class PopupManager:
             
             # 添加到活动弹窗列表（在 show() 之前）
             self.active_popups.append(popup)
-            logger.info(f"➕ 弹窗已添加到列表: {message.id}, 当前数量: {len(self.active_popups)}")
+            
+            # 先连接关闭信号，再show()——show()内部可能触发旧弹窗关闭/数量限制逻辑
+            popup.closed.connect(lambda: self._on_popup_closed(popup))
             
             # 显示弹窗（PopupStackManager 会在内部处理数量限制）
             popup.show()
@@ -156,10 +152,7 @@ class PopupManager:
             if self.style.display_duration > 0:
                 popup.set_auto_close(self.style.display_duration)
             
-            # 当弹窗关闭时从列表中移除
-            popup.closed.connect(lambda: self._on_popup_closed(popup))
-            
-            logger.info(f"✅ 弹窗已显示: {message.id} (当前活动: {len(self.active_popups)})")
+            logger.debug(f"弹窗已显示: {message.id} (当前活动: {len(self.active_popups)})")
             
         except Exception as e:
             logger.error(f"显示弹窗失败: {e}", exc_info=True)

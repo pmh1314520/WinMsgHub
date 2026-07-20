@@ -19,10 +19,12 @@ def test_logger_singleton():
 
 
 def test_get_logger():
-    """测试获取日志记录器"""
+    """测试获取日志记录器（子模块自动挂载到WinMsgHub层级下）"""
     logger = get_logger('test')
     assert isinstance(logger, logging.Logger)
-    assert logger.name == 'test'
+    # 子logger会被自动加上WinMsgHub前缀，形成日志层级，共享根logger的处理器
+    assert logger.name == 'WinMsgHub.test'
+    assert logger.propagate is True
 
 
 def test_get_logger_default_name():

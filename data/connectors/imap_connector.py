@@ -251,15 +251,16 @@ class IMAPConnector(MessageConnector):
             # 🔥 首次检查：只标记所有邮件为已处理，不弹窗
             if self._is_first_check:
                 logger.info(f"⚠️ 首次检查，将所有未读邮件标记为已处理（不弹窗）")
+                import re
                 for num in message_nums:
                     try:
                         status, uid_data = self._imap.fetch(num, '(UID)')
                         if status == 'OK':
-                            uid_str = uid_data[0].decode('utf-8')
-                            for part in uid_str.split():
-                                if part.isdigit():
-                                    self._processed_uids.add(part)
-                                    break
+                            uid_str = uid_data[0].decode('utf-8', errors='ignore')
+                            # 用正则精确提取UID（第一个数字是序列号，不是UID）
+                            uid_match = re.search(r'UID (\d+)', uid_str)
+                            if uid_match:
+                                self._processed_uids.add(uid_match.group(1))
                     except Exception as e:
                         logger.error(f"标记邮件UID失败: {e}")
                 
@@ -288,19 +289,18 @@ class IMAPConnector(MessageConnector):
                         continue
                     
                     # 解析 UID 和日期
-                    uid_str = uid_data[0].decode('utf-8')
-                    uid = None
+                    # 响应格式类似：b'1 (UID 4827 INTERNALDATE "03-Feb-2026 10:23:45 +0800")'
+                    uid_str = uid_data[0].decode('utf-8', errors='ignore')
                     email_date = None
                     
-                    # 解析UID
-                    for part in uid_str.split():
-                        if part.isdigit():
-                            uid = part
-                            break
+                    # 解析UID：必须用正则精确提取"UID <数字>"，
+                    # 不能取第一个数字（那是会随邮箱变化的序列号，会导致去重失效）
+                    import re
+                    uid_match = re.search(r'UID (\d+)', uid_str)
+                    uid = uid_match.group(1) if uid_match else None
                     
                     # 解析日期
                     try:
-                        import re
                         from email.utils import parsedate_to_datetime
                         date_match = re.search(r'INTERNALDATE "([^"]+)"', uid_str)
                         if date_match:
@@ -312,7 +312,8 @@ class IMAPConnector(MessageConnector):
                             if email_timestamp < thirty_minutes_ago:
                                 logger.debug(f"邮件 UID {uid} 超过30分钟，跳过（日期: {email_date}）")
                                 # 标记为已处理，避免下次再检查
-                                self._processed_uids.add(uid)
+                                if uid:
+                                    self._processed_uids.add(uid)
                                 continue
                     except Exception as e:
                         logger.warning(f"解析邮件日期失败: {e}，将处理该邮件")
@@ -336,14 +337,19 @@ class IMAPConnector(MessageConnector):
                         break
                     
                     # 获取邮件内容
-                    status, data = self._imap.fetch(num, '(RFC822)')
+                    # 使用BODY.PEEK[]而不是RFC822，避免将用户邮箱中的邮件标记为已读
+                    status, data = self._imap.fetch(num, '(BODY.PEEK[])')
                     
                     if status == 'OK':
-                        email_body = data[0][1]
+                        email_body = self._extract_email_body(data)
+                        if email_body is None:
+                            logger.warning(f"无法提取邮件内容 (UID: {uid})")
+                            continue
+                        
                         email_message = email.message_from_bytes(email_body)
                         
-                        # 解析邮件
-                        message = self._parse_email(email_message)
+                        # 解析邮件（附带真实收件时间）
+                        message = self._parse_email(email_message, email_date)
                         
                         # 记录已处理的 UID
                         self._processed_uids.add(uid)
@@ -368,10 +374,14 @@ class IMAPConnector(MessageConnector):
                 self._save_processed_uids()
             
             # 定期清理已处理的 UID 集合，避免内存无限增长
+            # UID在同一邮箱内单调递增，按数值排序保留最新的500个
             if len(self._processed_uids) > 1000:
                 logger.info(f"🧹 清理旧的 UID 记录，当前数量: {len(self._processed_uids)}")
-                recent_uids = list(self._processed_uids)[-500:]
-                self._processed_uids = set(recent_uids)
+                sorted_uids = sorted(
+                    self._processed_uids,
+                    key=lambda u: int(u) if u.isdigit() else 0
+                )
+                self._processed_uids = set(sorted_uids[-500:])
                 logger.info(f"✅ 清理完成，剩余 UID 数量: {len(self._processed_uids)}")
                     
         except Exception as e:
@@ -409,8 +419,27 @@ class IMAPConnector(MessageConnector):
             logger.error(f"❌ IMAP 重新连接失败: {e}", exc_info=True)
             return False
     
-    def _parse_email(self, email_message) -> Message:
-        """解析邮件"""
+    @staticmethod
+    def _extract_email_body(fetch_data) -> Optional[bytes]:
+        """从IMAP fetch响应中提取邮件原文字节
+        
+        fetch响应是列表，其中真正的邮件内容是(元信息, 字节)元组。
+        """
+        try:
+            for item in fetch_data:
+                if isinstance(item, tuple) and len(item) >= 2 and isinstance(item[1], (bytes, bytearray)):
+                    return bytes(item[1])
+            return None
+        except Exception:
+            return None
+    
+    def _parse_email(self, email_message, email_date=None) -> Message:
+        """解析邮件
+        
+        Args:
+            email_message: email.message.Message对象
+            email_date: 邮件的真实收件时间（datetime，可选）
+        """
         from email.header import decode_header
         
         # 解码邮件标题
@@ -506,11 +535,22 @@ class IMAPConnector(MessageConnector):
             except Exception as e:
                 logger.warning(f"解码邮件正文失败: {e}")
         
+        # 使用用户配置的名称作为来源（与其他连接器保持一致）
+        source_name = (self._config or {}).get('name', 'IMAP')
+        
+        # 优先使用邮件的真实收件时间
+        timestamp = time.time()
+        if email_date is not None:
+            try:
+                timestamp = email_date.timestamp()
+            except Exception:
+                pass
+        
         return Message(
             id=str(uuid.uuid4()),
-            source='IMAP',
+            source=source_name,
             title=subject if subject else '无主题',
             content=content if content else '(无内容)',
-            timestamp=time.time(),
+            timestamp=timestamp,
             metadata={'from': from_addr}
         )

@@ -485,6 +485,12 @@ class SvgIcon:
         Returns:
             QPixmap对象
         """
+        cache_key = f"pixmap_{name}_{color}_{size}"
+        
+        # 检查缓存（Pixmap与Icon分开缓存）
+        if cache_key in cls._cache:
+            return cls._cache[cache_key]
+        
         # 获取SVG内容
         svg_content = cls.ICONS.get(name)
         if not svg_content:
@@ -506,53 +512,7 @@ class SvgIcon:
         renderer.render(painter)
         painter.end()
         
+        # 缓存Pixmap
+        cls._cache[cache_key] = pixmap
+        
         return pixmap
-    
-    @classmethod
-    def get_icon(cls, name: str, color: str = "#FFFFFF", size: int = 24) -> QIcon:
-        """获取SVG图标
-        
-        Args:
-            name: 图标名称
-            color: 图标颜色
-            size: 图标大小
-            
-        Returns:
-            QIcon: Qt图标对象
-        """
-        # 生成缓存键
-        cache_key = f"{name}_{color}_{size}"
-        
-        # 检查缓存
-        if cache_key in cls._cache:
-            return cls._cache[cache_key]
-        
-        # 获取SVG代码
-        svg_code = cls.ICONS.get(name)
-        if not svg_code:
-            # 如果图标不存在，返回默认图标
-            svg_code = cls.ICONS.get("question", "")
-        
-        # 替换颜色
-        svg_code = svg_code.replace('currentColor', color)
-        
-        # 创建SVG渲染器
-        svg_bytes = QByteArray(svg_code.encode('utf-8'))
-        renderer = QSvgRenderer(svg_bytes)
-        
-        # 创建Pixmap
-        pixmap = QPixmap(QSize(size, size))
-        pixmap.fill(Qt.GlobalColor.transparent)
-        
-        # 渲染SVG到Pixmap
-        painter = QPainter(pixmap)
-        renderer.render(painter)
-        painter.end()
-        
-        # 创建图标
-        icon = QIcon(pixmap)
-        
-        # 缓存图标
-        cls._cache[cache_key] = icon
-        
-        return icon

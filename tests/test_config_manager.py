@@ -41,21 +41,30 @@ class TestConfigManager:
         assert "popup" in config
         assert "theme" in config
         assert "filters" in config
-        assert "startup" in config
+        assert "system" in config
         assert "history" in config
+    
+    def test_default_message_sources_are_lists(self, config_manager):
+        """测试默认消息源配置为多实例列表格式"""
+        message_sources = config_manager.get("message_sources")
+        for source_type in ["mqtt", "api", "webhook", "imap",
+                            "websocket", "rss", "file_monitor", "clipboard"]:
+            assert source_type in message_sources
+            assert isinstance(message_sources[source_type], list), \
+                f"{source_type} 应该是列表（多实例）格式"
     
     def test_get_simple_key(self, config_manager):
         """测试获取简单配置项"""
         version = config_manager.get("version")
-        assert version == "1.0.0"
+        assert version == "2.0.0"
     
     def test_get_nested_key(self, config_manager):
         """测试获取嵌套配置项"""
-        broker = config_manager.get("message_sources.mqtt.broker")
-        assert broker == "WinMsgHub.pmhs.top/mqtt"
-        
         width = config_manager.get("popup.width")
-        assert width == 350
+        assert width == 400
+        
+        height = config_manager.get("popup.height")
+        assert height == 120
     
     def test_get_nonexistent_key_returns_default(self, config_manager):
         """测试获取不存在的键返回默认值"""
@@ -74,11 +83,11 @@ class TestConfigManager:
     
     def test_set_nested_key(self, config_manager):
         """测试设置嵌套配置项"""
-        config_manager.set("popup.width", 400)
-        assert config_manager.get("popup.width") == 400
+        config_manager.set("popup.width", 480)
+        assert config_manager.get("popup.width") == 480
         
-        config_manager.set("message_sources.mqtt.port", 1883)
-        assert config_manager.get("message_sources.mqtt.port") == 1883
+        config_manager.set("local_mqtt.port", 1883)
+        assert config_manager.get("local_mqtt.port") == 1883
     
     def test_set_creates_nested_structure(self, config_manager):
         """测试设置配置项会创建嵌套结构"""
@@ -122,8 +131,8 @@ class TestConfigManager:
         config_manager = ConfigManager(temp_config_dir)
         
         # 应该使用默认配置
-        assert config_manager.get("version") == "1.0.0"
-        assert config_manager.get("popup.width") == 350
+        assert config_manager.get("version") == "2.0.0"
+        assert config_manager.get("popup.width") == 400
         
         # 验证备份文件已创建
         backup_file = config_file.with_suffix('.json.backup')
@@ -134,44 +143,53 @@ class TestConfigManager:
         config_manager = ConfigManager(temp_config_dir)
         
         # 应该使用默认配置
-        assert config_manager.get("version") == "1.0.0"
-        assert config_manager.get("message_sources.mqtt.broker") == "WinMsgHub.pmhs.top/mqtt"
+        assert config_manager.get("version") == "2.0.0"
+        assert config_manager.get("message_sources.mqtt") == []
     
     def test_validate_popup_width_negative(self, config_manager):
         """测试验证弹窗宽度为负数时使用默认值"""
         config_manager.config["popup"]["width"] = -100
         validated = config_manager._validate_config(config_manager.config)
-        assert validated["popup"]["width"] == 350  # 默认值
+        assert validated["popup"]["width"] == 400  # 默认值
     
     def test_validate_popup_height_zero(self, config_manager):
         """测试验证弹窗高度为0时使用默认值"""
         config_manager.config["popup"]["height"] = 0
         validated = config_manager._validate_config(config_manager.config)
-        assert validated["popup"]["height"] == 100  # 默认值
+        assert validated["popup"]["height"] == 120  # 默认值
     
     def test_validate_opacity_out_of_range(self, config_manager):
         """测试验证透明度超出范围时使用默认值"""
         # 测试大于1.0
         config_manager.config["popup"]["opacity"] = 1.5
         validated = config_manager._validate_config(config_manager.config)
-        assert validated["popup"]["opacity"] == 0.95  # 默认值
+        assert validated["popup"]["opacity"] == 0.98  # 默认值
         
         # 测试小于0.0
         config_manager.config["popup"]["opacity"] = -0.5
         validated = config_manager._validate_config(config_manager.config)
-        assert validated["popup"]["opacity"] == 0.95  # 默认值
+        assert validated["popup"]["opacity"] == 0.98  # 默认值
     
     def test_validate_port_out_of_range(self, config_manager):
-        """测试验证端口号超出范围时使用默认值"""
-        # 测试MQTT端口
-        config_manager.config["message_sources"]["mqtt"]["port"] = 70000
+        """测试验证端口号超出范围时使用默认值（多实例列表格式）"""
+        # 多实例列表格式中的无效端口应被修正
+        config_manager.config["message_sources"]["mqtt"] = [
+            {"enabled": True, "name": "测试", "port": 70000}
+        ]
         validated = config_manager._validate_config(config_manager.config)
-        assert validated["message_sources"]["mqtt"]["port"] == 8883  # 默认值
+        assert validated["message_sources"]["mqtt"][0]["port"] == 8883  # 默认值
         
         # 测试端口为0
-        config_manager.config["message_sources"]["mqtt"]["port"] = 0
+        config_manager.config["message_sources"]["mqtt"] = [
+            {"enabled": True, "name": "测试", "port": 0}
+        ]
         validated = config_manager._validate_config(config_manager.config)
-        assert validated["message_sources"]["mqtt"]["port"] == 8883  # 默认值
+        assert validated["message_sources"]["mqtt"][0]["port"] == 8883  # 默认值
+        
+        # 旧版字典格式也要兼容
+        config_manager.config["message_sources"]["webhook"] = {"enabled": True, "port": -1}
+        validated = config_manager._validate_config(config_manager.config)
+        assert validated["message_sources"]["webhook"]["port"] == 8080  # 默认值
     
     def test_validate_negative_retention_days(self, config_manager):
         """测试验证负数保留天数时使用默认值"""
@@ -185,7 +203,7 @@ class TestConfigManager:
         
         # 修改副本不应影响原配置
         config_copy["version"] = "999.0.0"
-        assert config_manager.get("version") == "1.0.0"
+        assert config_manager.get("version") == "2.0.0"
     
     def test_reset_to_defaults(self, config_manager):
         """测试重置配置为默认值"""
@@ -197,7 +215,7 @@ class TestConfigManager:
         config_manager.reset_to_defaults()
         
         # 验证已恢复默认值
-        assert config_manager.get("popup.width") == 350
+        assert config_manager.get("popup.width") == 400
         assert config_manager.get("theme.mode") == "system"
     
     def test_merge_with_defaults_fills_missing_keys(self, config_manager):
@@ -270,6 +288,11 @@ class TestConfigManagerProperties:
         
         # 过滤掉可能导致问题的键名
         assume('.' in key or key.isalnum())  # 确保键名有效
+        assume(not key.startswith('.') and not key.endswith('.') and '..' not in key)
+        
+        # 使用独立命名空间，避免随机键名与默认配置的标量键冲突
+        # （例如"version.x"会试图往字符串里写子键，属于非法路径）
+        key = f"test_namespace.{key}"
         
         # 创建临时目录
         with tempfile.TemporaryDirectory() as tmpdir:

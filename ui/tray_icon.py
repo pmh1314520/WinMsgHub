@@ -80,17 +80,19 @@ class TrayIcon(QObject):
         self.tray_icon.setIcon(icon)
         self.tray_icon.setToolTip("WinMsgHub")
     
+    def _build_title_text(self) -> str:
+        """构建统计信息标题文本"""
+        if self.active_sources > 0:
+            return f"WinMsgHub - {self.active_sources}个消息源 | {self.message_count}条消息"
+        return f"WinMsgHub - 无活动消息源 | {self.message_count}条消息"
+    
     def _create_menu(self):
         """创建托盘菜单（需求6.4）"""
         menu = QMenu()
         
-        # 标题（显示统计信息）
-        if self.active_sources > 0:
-            title_text = f"WinMsgHub - {self.active_sources}个消息源 | {self.message_count}条消息"
-        else:
-            title_text = f"WinMsgHub - 无活动消息源 | {self.message_count}条消息"
-        
-        title_action = QAction(title_text, menu)
+        # 标题（显示统计信息）—— 保存引用，统计更新时只改文本不重建菜单
+        self._title_action = QAction(self._build_title_text(), menu)
+        title_action = self._title_action
         title_action.setEnabled(False)  # 不可点击，仅显示信息
         font = title_action.font()
         font.setBold(True)
@@ -146,6 +148,8 @@ class TrayIcon(QObject):
         quit_action.triggered.connect(self.quit_requested.emit)
         menu.addAction(quit_action)
         
+        # 必须保留Python引用，否则QMenu可能被垃圾回收导致托盘菜单失效
+        self._menu = menu
         self.tray_icon.setContextMenu(menu)
     
     def _on_activated(self, reason):
@@ -213,5 +217,7 @@ class TrayIcon(QObject):
         
         self.tray_icon.setToolTip(tooltip)
         
-        # 重新创建菜单以更新统计信息
-        self._create_menu()
+        # 只更新标题文本，不重建整个菜单
+        # （每条消息都重建菜单会导致菜单打开时被强制关闭，且泄漏旧菜单对象）
+        if hasattr(self, '_title_action') and self._title_action:
+            self._title_action.setText(self._build_title_text())

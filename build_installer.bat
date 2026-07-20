@@ -6,7 +6,7 @@ echo 作者：青云制作_彭明�?
 echo ========================================
 echo.
 
-REM 检�?Inno Setup 是否已安�?
+REM 检�?Inno Setup 是坦已安�?
 set "INNO_PATH=D:\Inno Setup 6\ISCC.exe"
 
 if not exist "%INNO_PATH%" (
@@ -27,12 +27,12 @@ if not exist "%INNO_PATH%" (
     echo 📖 安装教程�?
     echo    请查�?INSTALL_INNO_SETUP.md 文件
     echo.
-    echo 💡 提示�?
+    echo 💡 杝示�?
     echo    1. 下载并安�?Inno Setup 6
     echo    2. 使用默认安装路径
-    echo    3. 安装完成后重新运行此脚本
+    echo    3. 安装完戝坎針新违行此脚本
     echo.
-    echo 按任意键打开下载页面...
+    echo 按任愝键打开下载页面...
     pause >nul
     start https://jrsoftware.org/isdl.php
     exit /b 1
@@ -40,12 +40,12 @@ if not exist "%INNO_PATH%" (
 
 echo [1/3] 检查打包文�?..
 if not exist "dist\WinMsgHub\WinMsgHub.exe" (
-    echo [错误] 未找到打包后的程序文件！
+    echo [错误] 未找到打包坎的程庝文件＝
     echo.
-    echo 请先运行以下命令打包程序�?
+    echo 请先违行以下命令打包程庝�?
     echo    build.bat
     echo.
-    echo 或者运行一键构建：
+    echo 或者违行一键构建：
     echo    build_all.bat
     echo.
     pause
@@ -60,28 +60,28 @@ echo 正在使用 Inno Setup 编译...
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo [错误] 安装包编译失败！
+    echo [错误] 安装包编译失败＝
     echo.
-    echo 可能的原因：
+    echo 坯能的原因：
     echo 1. installer.iss 脚本有错�?
-    echo 2. 缺少必要的文件（LICENSE、图标等�?
-    echo 3. 路径配置不正�?
+    echo 2. 缺少必覝的文件（LICENSE〝图标等�?
+    echo 3. 路径酝置丝正�?
     echo.
-    echo 请检查上方的错误信息�?
+    echo 请检查上方的错误信杯�?
     pause
     exit /b 1
 )
 
 echo.
-echo [3/3] 安装包生成完成！
+echo [3/3] 安装包生戝完戝＝
 echo.
 echo ┌─────────────────────────────────────�?
-echo �? �?安装包制作成功！                �?
+echo �? �?安装包制作戝功＝                �?
 echo └─────────────────────────────────────�?
 echo.
-echo 📁 输出目录：installer_output\
-echo 📦 安装包文件：WinMsgHub_v1.1.4_Setup.exe
-echo 📏 文件大小�?
+echo 📝 输出目录：installer_output\
+echo 📦 安装包文件：WinMsgHub_v1.2.0_Setup.exe
+echo 📝 文件大尝�?
 dir /b installer_output\*.exe 2>nul | findstr /i "setup.exe" >nul && for %%F in (installer_output\*Setup.exe) do echo    %%~zF 字节
 echo.
 echo 💡 下一步：

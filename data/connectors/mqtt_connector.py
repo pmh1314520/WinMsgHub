@@ -95,8 +95,16 @@ class MQTTConnector(MessageConnector):
             
             logger.info(f"正在连接到MQTT Broker: {broker}:{port}, 主题: {topic}")
             
-            # 创建MQTT客户端
-            self._client = mqtt.Client(client_id=client_id)
+            # 创建MQTT客户端（兼容paho-mqtt 1.x和2.x：
+            # 2.x要求显式指定回调API版本，否则构造函数直接报错）
+            try:
+                self._client = mqtt.Client(
+                    mqtt.CallbackAPIVersion.VERSION1,
+                    client_id=client_id
+                )
+            except AttributeError:
+                # paho-mqtt 1.x 没有 CallbackAPIVersion
+                self._client = mqtt.Client(client_id=client_id)
             
             # 设置用户名和密码（如果提供）
             if username and password:
@@ -122,6 +130,13 @@ class MQTTConnector(MessageConnector):
             self._client.on_connect = self._on_connect
             self._client.on_disconnect = self._on_disconnect
             self._client.on_message = self._on_message
+            
+            # 配置paho内置的指数退避自动重连（在网络线程中自动执行，
+            # 无需在回调里手动sleep+reconnect阻塞网络循环）
+            self._client.reconnect_delay_set(
+                min_delay=self.INITIAL_RECONNECT_DELAY,
+                max_delay=self.MAX_RECONNECT_DELAY
+            )
             
             # 使用connect_async进行非阻塞连接，避免UI卡死
             try:
@@ -243,7 +258,9 @@ class MQTTConnector(MessageConnector):
         """
         MQTT断开连接回调
         
-        实现自动重连机制（需求1.6：错误处理和重连机制）
+        注意：此回调运行在paho的网络线程中，绝不能在这里sleep或
+        手动调用reconnect()——paho的loop_start线程会依据
+        reconnect_delay_set的配置自动进行指数退避重连。
         
         Args:
             client: MQTT客户端实例
@@ -253,27 +270,15 @@ class MQTTConnector(MessageConnector):
         self._connected = False
         
         if rc != 0:
-            logger.warning(f"MQTT连接意外断开 (代码: {rc})")
-            
-            # 实现指数退避重连机制
             if self._should_reconnect and self._config:
-                logger.info(f"将在 {self._reconnect_delay} 秒后尝试重连...")
-                time.sleep(self._reconnect_delay)
-                
-                # 增加重连延迟（指数退避）
-                self._reconnect_delay = min(
-                    self._reconnect_delay * 2,
-                    self.MAX_RECONNECT_DELAY
+                broker = self._config.get('broker', self.DEFAULT_BROKER)
+                port = self._config.get('port', self.DEFAULT_PORT)
+                logger.warning(
+                    f"MQTT连接意外断开 (代码: {rc})，"
+                    f"将自动重连到 {broker}:{port}（指数退避，最大间隔{self.MAX_RECONNECT_DELAY}秒）"
                 )
-                
-                # 尝试重连
-                try:
-                    broker = self._config.get('broker', self.DEFAULT_BROKER)
-                    port = self._config.get('port', self.DEFAULT_PORT)
-                    client.reconnect()
-                    logger.info(f"正在重连到 {broker}:{port}...")
-                except Exception as e:
-                    logger.error(f"重连失败: {str(e)}")
+            else:
+                logger.warning(f"MQTT连接意外断开 (代码: {rc})")
         else:
             logger.info("MQTT连接正常断开")
     
@@ -307,96 +312,32 @@ class MQTTConnector(MessageConnector):
             if len(self._recent_message_hashes) > self._max_hash_cache:
                 self._recent_message_hashes.pop(0)
             
-            # 打印分隔线
-            print("\n" + "="*80)
-            print("📨 收到MQTT消息")
-            print("="*80)
-            
             # 安全解码payload
             try:
                 payload = msg.payload.decode('utf-8')
-                print(f"✓ UTF-8解码成功")
             except UnicodeDecodeError:
                 try:
                     payload = msg.payload.decode('gbk')
-                    print(f"✓ GBK解码成功")
-                except:
-                    logger.error("❌ MQTT消息解码失败，跳过此消息")
-                    print(f"❌ 解码失败，原始字节: {msg.payload}")
-                    print("="*80 + "\n")
+                except (UnicodeDecodeError, LookupError):
+                    logger.error("MQTT消息解码失败（非UTF-8/GBK编码），跳过此消息")
                     return
             
-            # 打印原始数据
-            print(f"📍 主题: {msg.topic}")
-            print(f"📦 原始payload: {payload}")
-            print(f"📏 长度: {len(payload)} 字符")
-            print(f"🔢 QoS: {msg.qos}")
-            
             logger.info(f"收到MQTT消息 - 主题: {msg.topic}, 长度: {len(payload)}")
+            logger.debug(f"MQTT原始payload: {payload[:500]}")
             
-            # 第一次JSON解析
-            try:
-                data = json.loads(payload)
-                print(f"✓ 第一次JSON解析成功")
-                print(f"📋 解析后的数据:")
-                for key, value in data.items():
-                    value_str = str(value)[:100] + '...' if len(str(value)) > 100 else str(value)
-                    print(f"   - {key}: {value_str}")
-            except json.JSONDecodeError as e:
-                logger.error(f"❌ MQTT消息不是有效的JSON格式: {e}")
-                print(f"❌ JSON解析失败: {e}")
-                print(f"   错误位置: 第{e.lineno}行, 第{e.colno}列")
-                print("="*80 + "\n")
+            # 解析payload（宽容解析：JSON优先，纯文本兜底）
+            data = self._parse_payload(payload)
+            if data is None:
                 return
-            
-            # 检查是否是嵌套格式（msg字段包含JSON字符串）
-            if 'msg' in data and isinstance(data['msg'], str):
-                print(f"🔄 检测到嵌套格式，尝试解析msg字段...")
-                try:
-                    # 尝试解析msg字段中的JSON字符串
-                    nested_data = json.loads(data['msg'])
-                    print(f"✓ msg字段JSON解析成功")
-                    print(f"📋 嵌套数据:")
-                    for key, value in nested_data.items():
-                        print(f"   - {key}: {value}")
-                    # 使用嵌套的数据
-                    data = nested_data
-                except json.JSONDecodeError as e:
-                    print(f"⚠️  msg字段不是有效的JSON，使用原始数据")
-                    # 如果msg字段不是JSON，就把它当作content
-                    if 'title' not in data and 'content' not in data:
-                        data = {
-                            'title': '新消息',
-                            'content': data['msg']
-                        }
-            
-            # 验证必需字段
-            if 'title' not in data:
-                logger.error("❌ MQTT消息缺少必需字段: title")
-                print(f"❌ 缺少必需字段: title")
-                print(f"   当前字段: {list(data.keys())}")
-                print("="*80 + "\n")
-                return
-            
-            if 'content' not in data:
-                logger.error("❌ MQTT消息缺少必需字段: content")
-                print(f"❌ 缺少必需字段: content")
-                print(f"   当前字段: {list(data.keys())}")
-                print("="*80 + "\n")
-                return
-            
-            print(f"✓ 字段验证通过")
             
             # 获取source（可选字段）
-            source_name = self._config.get('name', 'MQTT')
-            final_source = data.get('source', source_name)
+            source_name = (self._config or {}).get('name', 'MQTT')
+            final_source = data.get('source') or source_name
             
-            print(f"📌 最终来源: {final_source}")
-            
-            # 创建Message对象
+            # 创建Message对象（timestamp由Message自动归一化为秒级）
             message = Message(
-                id=data.get('id', str(uuid.uuid4())),
-                source=final_source,
+                id=str(data.get('id') or uuid.uuid4()),
+                source=str(final_source),
                 title=str(data['title']),
                 content=str(data['content']),
                 timestamp=data.get('timestamp', time.time()),
@@ -407,26 +348,76 @@ class MQTTConnector(MessageConnector):
                 }
             )
             
-            print(f"✅ 消息对象创建成功:")
-            print(f"   - ID: {message.id}")
-            print(f"   - 来源: {message.source}")
-            print(f"   - 标题: {message.title}")
-            print(f"   - 内容: {message.content[:50]}{'...' if len(message.content) > 50 else ''}")
-            print("="*80 + "\n")
-            
-            logger.info(f"✅ MQTT消息已解析: title={message.title}, source={message.source}")
+            logger.info(f"MQTT消息已解析: title={message.title}, source={message.source}")
             
             # 调用回调函数
             if self._callback:
                 try:
                     self._callback(message)
                 except Exception as e:
-                    logger.error(f"❌ MQTT消息回调失败: {e}", exc_info=True)
-                    print(f"❌ 回调函数执行失败: {e}")
+                    logger.error(f"MQTT消息回调失败: {e}", exc_info=True)
                 
         except Exception as e:
-            logger.error(f"❌ 处理MQTT消息时出错: {e}", exc_info=True)
-            print(f"❌ 处理消息时出现异常: {e}")
-            import traceback
-            traceback.print_exc()
-            print("="*80 + "\n")
+            logger.error(f"处理MQTT消息时出错: {e}", exc_info=True)
+    
+    def _parse_payload(self, payload: str) -> Optional[dict]:
+        """解析MQTT payload为消息字典
+        
+        支持的格式（按优先级）：
+        1. 标准JSON：{"title": "...", "content": "...", "source": "..."}
+        2. 嵌套JSON：{"msg": "{\"title\": ...}"} （SmsForwarder等转发工具格式）
+        3. msg字段为纯文本：{"msg": "文本"}
+        4. 非字典JSON（字符串/数组/数字）：整体作为内容
+        5. 纯文本：整体作为内容
+        
+        Returns:
+            至少包含title和content键的字典；无法解析时返回None
+        """
+        payload = payload.strip()
+        if not payload:
+            logger.warning("MQTT消息为空，已跳过")
+            return None
+        
+        data = None
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            # 非JSON：作为纯文本消息处理
+            logger.debug("MQTT消息不是JSON格式，作为纯文本处理")
+        
+        if data is None or not isinstance(data, (dict,)):
+            # 纯文本或非字典JSON（如"hello"、[1,2]）
+            content = payload if data is None else str(data)
+            return {'title': '新消息', 'content': content}
+        
+        # 检查是否是嵌套格式（msg字段包含JSON字符串）
+        if 'msg' in data and isinstance(data['msg'], str):
+            try:
+                nested_data = json.loads(data['msg'])
+                if isinstance(nested_data, dict):
+                    # 合并外层与内层数据，内层优先
+                    merged = {**data, **nested_data}
+                    merged.pop('msg', None)
+                    data = merged
+                    logger.debug("MQTT检测到嵌套JSON格式，已解析msg字段")
+                else:
+                    data = {'title': '新消息', 'content': str(nested_data)}
+            except json.JSONDecodeError:
+                # msg字段不是JSON，把它当作content
+                if 'title' not in data and 'content' not in data:
+                    data = {'title': '新消息', 'content': data['msg']}
+        
+        # 补全缺失字段（至少要有title或content之一）
+        has_title = 'title' in data and data['title'] is not None
+        has_content = 'content' in data and data['content'] is not None
+        
+        if not has_title and not has_content:
+            logger.error(f"MQTT消息缺少title和content字段，已跳过。当前字段: {list(data.keys())}")
+            return None
+        
+        if not has_title:
+            data['title'] = '新消息'
+        if not has_content:
+            data['content'] = str(data['title'])
+        
+        return data

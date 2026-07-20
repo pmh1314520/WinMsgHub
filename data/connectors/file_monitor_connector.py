@@ -21,31 +21,59 @@ logger = logging.getLogger(__name__)
 class FileMonitorHandler(FileSystemEventHandler):
     """文件系统事件处理器"""
     
+    # 同一文件同一事件类型的去抖时间窗口（秒）
+    # Windows上一次文件保存往往会触发2~4次modified事件
+    DEBOUNCE_SECONDS = 1.0
+    
     def __init__(self, callback: Callable[[Message], None], config: dict):
         self.callback = callback
         self.config = config
         self.source_name = f"FileMonitor-{config.get('name', 'default')}"
+        # (事件类型, 文件路径) -> 上次触发时间
+        self._last_event_times: dict = {}
+    
+    def _should_debounce(self, event_type: str, file_path: str) -> bool:
+        """判断该事件是否处于去抖窗口内（是则跳过）"""
+        key = (event_type, file_path)
+        now = time.time()
+        last_time = self._last_event_times.get(key, 0)
+        
+        if now - last_time < self.DEBOUNCE_SECONDS:
+            return True
+        
+        self._last_event_times[key] = now
+        # 防止字典无限增长
+        if len(self._last_event_times) > 1000:
+            cutoff = now - self.DEBOUNCE_SECONDS
+            self._last_event_times = {
+                k: v for k, v in self._last_event_times.items() if v >= cutoff
+            }
+        return False
     
     def on_created(self, event: FileSystemEvent):
         """文件创建事件"""
         if not event.is_directory and self.config.get('watch_create', True):
-            self._send_message('文件创建', event.src_path, '新文件已创建')
+            if not self._should_debounce('created', event.src_path):
+                self._send_message('文件创建', event.src_path, '新文件已创建')
     
     def on_modified(self, event: FileSystemEvent):
         """文件修改事件"""
         if not event.is_directory and self.config.get('watch_modify', True):
-            self._send_message('文件修改', event.src_path, '文件内容已更改')
+            if not self._should_debounce('modified', event.src_path):
+                self._send_message('文件修改', event.src_path, '文件内容已更改')
     
     def on_deleted(self, event: FileSystemEvent):
         """文件删除事件"""
         if not event.is_directory and self.config.get('watch_delete', True):
-            self._send_message('文件删除', event.src_path, '文件已被删除')
+            if not self._should_debounce('deleted', event.src_path):
+                self._send_message('文件删除', event.src_path, '文件已被删除')
     
     def on_moved(self, event: FileSystemEvent):
         """文件移动事件"""
         if not event.is_directory and self.config.get('watch_move', True):
-            content = f'从 {event.src_path} 移动到 {event.dest_path}'
-            self._send_message('文件移动', event.dest_path, content)
+            if not self._should_debounce('moved', event.dest_path):
+                content = f'从 {event.src_path} 移动到 {event.dest_path}'
+                self._send_message('文件移动', event.dest_path, content)
     
     def _send_message(self, event_type: str, file_path: str, content: str):
         """发送消息"""

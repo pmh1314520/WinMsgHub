@@ -59,7 +59,11 @@ class SystemMonitor(QObject):
         logger.info("系统监控定时器已启动")
     
     def _check_hourly(self):
-        """检查是否到整点"""
+        """检查是否到整点
+        
+        允许2分钟的触发窗口：QTimer的粗粒度定时器有约5%的时间偏差，
+        只判断minute==0偶尔会错过整点检查，导致整点提示丢失。
+        """
         # 检查功能是否启用
         if not self.config_manager.get("system_monitor.hourly_alert_enabled", False):
             return
@@ -67,11 +71,12 @@ class SystemMonitor(QObject):
         now = datetime.now()
         current_hour = now.hour
         
-        # 检查是否是整点（分钟为0）
-        if now.minute == 0:
-            # 防止同一小时重复提示
-            if self._last_hourly_alert != current_hour:
-                self._last_hourly_alert = current_hour
+        # 整点后2分钟内均可触发（每小时仍只提示一次）
+        if now.minute < 2:
+            # 防止同一小时重复提示（用(日期,小时)做键，跨天同小时也能正确触发）
+            alert_key = (now.date(), current_hour)
+            if self._last_hourly_alert != alert_key:
+                self._last_hourly_alert = alert_key
                 self.hourly_alert.emit(current_hour)
                 logger.info(f"触发整点提示: {current_hour}:00")
     
